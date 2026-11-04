@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import type { Dispatch } from 'react'
 import type { Action } from '../app/store'
-import type { Player, Position } from '../entities/player'
+import type { AttendanceLevel, Player, Position } from '../entities/player'
 import {
-  CSV_TEMPLATE, POSITIONS, POSITION_LABEL, SAMPLE_MEMBERS, SKILL_MAX, SKILL_MIN,
+  ATTENDANCE_LABEL, ATTENDANCE_LEVELS, CSV_TEMPLATE, POSITIONS, POSITION_LABEL, SAMPLE_MEMBERS, SKILL_MAX, SKILL_MIN,
   clampSkill, membersToCsv, parseBirthYear, parseMembersCsv, shortYear,
 } from '../entities/player'
 import { deleteMember, insertMembers, updateMember, upsertMembersByName } from '../entities/player/api'
@@ -66,6 +66,11 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
     dispatch({ type: 'member/update', player: await updateMember({ ...m, status: m.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' }) })
   })
 
+  /** 표에서 바로 참석률 변경 (포지션·실력 미입력 표시는 그대로 둠) */
+  const setAttendance = (m: Player, level: AttendanceLevel | undefined) => run(async () => {
+    dispatch({ type: 'member/update', player: await updateMember({ ...m, attendanceLevel: level }) })
+  })
+
   const remove = (m: Player) => run(async () => {
     await deleteMember(m.id)
     dispatch({ type: 'member/remove', id: m.id })
@@ -97,6 +102,7 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
   const filtered = members.filter((m) => m.name.includes(query.trim()))
   const activeCount = members.filter((m) => m.status === 'ACTIVE').length
   const reviewCount = members.filter((m) => m.needsReview).length
+  const noAttCount = members.filter((m) => m.status === 'ACTIVE' && !m.attendanceLevel).length
 
   return (
     <section className="panel">
@@ -104,6 +110,7 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
         <div>
           <h2>회원 관리</h2>
           <p className="muted">전체 {members.length}명 · 활동 {activeCount}명
+            {noAttCount > 0 && <> · <span className="review-chip">참석률 미입력 {noAttCount}명</span></>}
             {reviewCount > 0 && <> · <span className="review-chip">포지션·실력 미입력 {reviewCount}명</span></>}
             {busy && ' · 저장 중…'}</p>
         </div>
@@ -161,6 +168,12 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
         <label className="field">실력 <b className="skill-val">{draft.skill}</b>
           <input type="range" min={SKILL_MIN} max={SKILL_MAX} value={draft.skill} onChange={(e) => setDraftState({ ...draft, skill: Number(e.target.value) })} />
         </label>
+        <label className="field">참석률
+          <select value={draft.attendanceLevel ?? ''} onChange={(e) => setDraftState({ ...draft, attendanceLevel: (e.target.value || undefined) as AttendanceLevel | undefined })}>
+            <option value="">미입력</option>
+            {ATTENDANCE_LEVELS.map((l) => <option key={l} value={l}>{ATTENDANCE_LABEL[l]}</option>)}
+          </select>
+        </label>
         <input placeholder="메모" value={draft.memo ?? ''} onChange={(e) => setDraftState({ ...draft, memo: e.target.value || undefined })} />
         <button className="btn primary" type="submit" disabled={busy}>{draft.id ? '수정 저장' : '회원 추가'}</button>
         {draft.id && <button className="btn ghost" type="button" onClick={() => setDraft(emptyDraft())}>취소</button>}
@@ -171,7 +184,7 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
       <div className="table-wrap">
         <table className="members">
           <thead>
-            <tr><th>년생</th><th>번호</th><th>이름</th><th>주포지션</th><th>부포지션</th><th>실력</th><th>상태</th><th>메모</th><th /></tr>
+            <tr><th>년생</th><th>번호</th><th>이름</th><th>주포지션</th><th>부포지션</th><th>실력</th><th>참석률</th><th>상태</th><th>메모</th><th /></tr>
           </thead>
           <tbody>
             {filtered.map((m) => (
@@ -182,6 +195,18 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
                 <td><span className={`pos pos-${m.mainPosition}`}>{POSITION_LABEL[m.mainPosition]}</span></td>
                 <td>{m.subPosition ? <span className={`pos pos-${m.subPosition} light`}>{POSITION_LABEL[m.subPosition]}</span> : <span className="muted">-</span>}</td>
                 <td>{m.needsReview ? <span className="review-chip">미입력</span> : <SkillBar value={m.skill} />}</td>
+                <td>
+                  <select
+                    className={`att-select att-${m.attendanceLevel ?? 'none'}`}
+                    aria-label={`${m.name} 참석률`}
+                    value={m.attendanceLevel ?? ''}
+                    disabled={busy}
+                    onChange={(e) => setAttendance(m, (e.target.value || undefined) as AttendanceLevel | undefined)}
+                  >
+                    <option value="">-</option>
+                    {ATTENDANCE_LEVELS.map((l) => <option key={l} value={l}>{ATTENDANCE_LABEL[l]}</option>)}
+                  </select>
+                </td>
                 <td>
                   <button className="link" disabled={busy} onClick={() => toggleStatus(m)}>
                     {m.status === 'ACTIVE' ? '활동' : '휴면'}
@@ -202,7 +227,7 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
               </tr>
             ))}
             {members.length === 0 && (
-              <tr><td colSpan={9} className="muted empty">아직 등록된 회원이 없습니다. 위에서 추가하거나 CSV로 불러오세요.</td></tr>
+              <tr><td colSpan={10} className="muted empty">아직 등록된 회원이 없습니다. 위에서 추가하거나 CSV로 불러오세요.</td></tr>
             )}
           </tbody>
         </table>

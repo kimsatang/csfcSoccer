@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import type { Player, Position } from '../entities/player'
-import { AGE_GROUPS, POSITIONS, POSITION_LABEL, UNKNOWN_AGE, ageGroupOf, shortYear, skillText } from '../entities/player'
+import { AGE_GROUPS, ATTENDANCE_LABEL, ATTENDANCE_LEVELS, POSITIONS, POSITION_LABEL, UNKNOWN_AGE, ageGroupOf, shortYear, skillText } from '../entities/player'
 import type { Roster, SeasonBundle } from '../entities/season'
 import { availablePlayers, matchDates, nextPickNo, orderedTeams, rosters, shortDate, teamForPick } from '../entities/season'
 import { finishDraft, makePick, reopenDraft, setDraftOrder, undoLastPick } from '../entities/season/api'
 import { TEAM_COLORS } from '../features/build-teams'
+import { AttendanceBadge } from './AttendanceBadge'
 import { shuffle } from '../shared/lib/rng'
 
 interface Props {
@@ -26,6 +27,7 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
   const [pos, setPos] = useState<PosFilter>('ALL')
   const [age, setAge] = useState<string>('ALL')
   const [grouped, setGrouped] = useState(true)
+  const [att, setAtt] = useState<string>('ALL')
   const [armed, setArmed] = useState<string | null>(null)
 
   const drafting = season.status === 'DRAFTING'
@@ -39,6 +41,7 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
   const filtered = available
     .filter((p) => (pos === 'ALL' ? true : p.mainPosition === pos || p.subPosition === pos))
     .filter((p) => (age === 'ALL' ? true : ageGroupOf(p).key === age))
+    .filter((p) => (att === 'ALL' ? true : att === 'NONE' ? !p.attendanceLevel : p.attendanceLevel === att))
     .filter((p) => p.name.includes(query.trim()))
     .sort((a, b) => (a.birthYear ?? 9999) - (b.birthYear ?? 9999) || a.name.localeCompare(b.name))
   const ageCounts = Object.fromEntries(ALL_AGE_GROUPS.map((g) => [g.key, available.filter((p) => ageGroupOf(p).key === g.key).length]))
@@ -162,6 +165,19 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
                 </button>
               ))}
             </div>
+            <div className="seg">
+              <button className={`seg-btn ${att === 'ALL' ? 'sel' : ''}`} onClick={() => setAtt('ALL')}>참석률 전체</button>
+              {ATTENDANCE_LEVELS.map((l) => (
+                <button key={l} className={`seg-btn ${att === l ? 'sel' : ''}`} onClick={() => setAtt(l)}>
+                  {ATTENDANCE_LABEL[l]} <span className="muted">{available.filter((p) => p.attendanceLevel === l).length}</span>
+                </button>
+              ))}
+              {available.some((p) => !p.attendanceLevel) && (
+                <button className={`seg-btn ${att === 'NONE' ? 'sel' : ''}`} onClick={() => setAtt('NONE')}>
+                  미입력 <span className="muted">{available.filter((p) => !p.attendanceLevel).length}</span>
+                </button>
+              )}
+            </div>
             <label className="toggle"><input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} /> 나이대별로 묶기</label>
           </div>
           {filtered.length === 0 && available.length > 0 ? (
@@ -179,6 +195,7 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
                 <li key={p.id}>
                   <span className="year">{shortYear(p.birthYear)}</span>
                   <span className="name">{p.name}</span>
+                  <AttendanceBadge level={p.attendanceLevel} compact />
                   {!p.needsReview && <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>}
                   {!p.needsReview && p.subPosition && <span className={`pos pos-${p.subPosition} light`}>{POSITION_LABEL[p.subPosition]}</span>}
                   {showSkill && <span className="skill-num">{skillText(p)}</span>}
@@ -220,6 +237,13 @@ function RosterCard({ roster, showSkill, active }: { roster: Roster; showSkill: 
           return n > 0 || g !== UNKNOWN_AGE ? <span key={g.key} className="age-chip">{g.label.replace('년생', '').replace(' 이후', '+')} {n}</span> : null
         })}
       </div>
+      {players.some((p) => p.attendanceLevel) && (
+        <div className="pos-summary">
+          {ATTENDANCE_LEVELS.map((l) => (
+            <span key={l} className={`att att-${l}`}>참석 {ATTENDANCE_LABEL[l]} {players.filter((p) => p.attendanceLevel === l).length}</span>
+          ))}
+        </div>
+      )}
       {rated.length > 0 && (
         <div className="pos-summary">
           {POSITIONS.map((p) => <span key={p} className={`pos pos-${p} light`}>{POSITION_LABEL[p]} {posCount(p)}</span>)}
@@ -239,6 +263,7 @@ function Row({ p, badge, pickNo, showSkill }: { p: Player; badge?: string; pickN
     <li className={badge ? 'leader' : ''}>
       {badge ? <span className={`badge ${badge === '팀장' ? 'cap' : 'vice'}`}>{badge}</span> : <span className="pick-no">#{pickNo}</span>}
       <span className="name">{p.name} <span className="year">{shortYear(p.birthYear)}</span></span>
+      <AttendanceBadge level={p.attendanceLevel} compact />
       {!p.needsReview && <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>}
       {showSkill && <span className="skill-num">{skillText(p)}</span>}
     </li>

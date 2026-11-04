@@ -22,3 +22,13 @@ describe('년생', () => {
     expect(skillText({ skill: 7 })).toBe('7')
   })
 })
+
+import { parseAttendance } from './csv'
+describe('참석률', () => {
+  it('CSV 표현 변환', () => {
+    expect(parseAttendance('높음')).toBe('HIGH')
+    expect(parseAttendance('보통')).toBe('MID')
+    expect(parseAttendance('low')).toBe('LOW')
+    expect(parseAttendance('')).toBeUndefined()
+  })
+})

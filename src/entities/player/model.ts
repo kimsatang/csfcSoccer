@@ -14,6 +14,17 @@ export const POSITION_LABEL: Record<Position, string> = {
 export type MemberStatus = 'ACTIVE' | 'INACTIVE'
 
 /** 경기 당일 역할 */
+/** 참석률 등급 (운영진 판단) */
+export type AttendanceLevel = 'HIGH' | 'MID' | 'LOW'
+
+export const ATTENDANCE_LEVELS: AttendanceLevel[] = ['HIGH', 'MID', 'LOW']
+
+export const ATTENDANCE_LABEL: Record<AttendanceLevel, string> = {
+  HIGH: '높음',
+  MID: '중간',
+  LOW: '낮음',
+}
+
 export type MatchRole = 'MEMBER' | 'CAPTAIN' | 'VICE'
 
 export const ROLE_LABEL: Record<MatchRole, string> = {
@@ -42,6 +53,8 @@ export interface Player {
   birthYear?: number
   /** 포지션·실력이 임시값이라 확인이 필요한 회원 */
   needsReview?: boolean
+  /** 참석률 등급 (선택) — 드래프트 참고, 팀별 분포 표시 */
+  attendanceLevel?: AttendanceLevel
   /** 회원 상태 (필수, 기본 ACTIVE) */
   status: MemberStatus
   /** 메모 (선택) — 운영진 참고용 */

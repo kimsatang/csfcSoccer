@@ -1,5 +1,5 @@
-import type { MemberStatus, Player, Position } from './model'
-import { clampSkill, newPlayerId } from './model'
+import type { AttendanceLevel, MemberStatus, Player, Position } from './model'
+import { ATTENDANCE_LABEL, clampSkill, newPlayerId } from './model'
 import { parseBirthYear } from './age'
 
 const POSITION_ALIASES: Record<string, Position> = {
@@ -7,6 +7,15 @@ const POSITION_ALIASES: Record<string, Position> = {
   df: 'DF', 수비: 'DF', 수비수: 'DF', 디펜스: 'DF', cb: 'DF', lb: 'DF', rb: 'DF',
   mf: 'MF', 미드: 'MF', 미드필더: 'MF', 중원: 'MF', cm: 'MF', dm: 'MF', am: 'MF',
   fw: 'FW', 공격: 'FW', 공격수: 'FW', 포워드: 'FW', st: 'FW', cf: 'FW', lw: 'FW', rw: 'FW',
+}
+
+export function parseAttendance(raw: string | undefined): AttendanceLevel | undefined {
+  const v = raw?.trim().toLowerCase()
+  if (!v) return undefined
+  if (['높음', '상', 'high', 'h'].includes(v)) return 'HIGH'
+  if (['중간', '보통', '중', 'mid', 'm'].includes(v)) return 'MID'
+  if (['낮음', '하', 'low', 'l'].includes(v)) return 'LOW'
+  return undefined
 }
 
 export function parsePosition(raw: string | undefined): Position | undefined {
@@ -22,6 +31,7 @@ const HEADER_ALIASES: Record<string, keyof Player> = {
   실력: 'skill', 능력치: 'skill', skill: 'skill', 레벨: 'skill',
   상태: 'status', status: 'status',
   메모: 'memo', memo: 'memo', 비고: 'memo',
+  참석률: 'attendanceLevel', 참석: 'attendanceLevel', attendance: 'attendanceLevel',
   년생: 'birthYear', 생년: 'birthYear', 출생년도: 'birthYear', birthyear: 'birthYear',
 }
 
@@ -71,15 +81,16 @@ export function parseMembersCsv(text: string): CsvParseResult {
       status,
       memo: row.memo || undefined,
       birthYear: parseBirthYear(row.birthYear),
+      attendanceLevel: parseAttendance(row.attendanceLevel),
     })
   })
   return { players, errors }
 }
 
 export function membersToCsv(players: Player[]): string {
-  const header = '이름,년생,등번호,주포지션,부포지션,실력,상태,메모'
+  const header = '이름,년생,등번호,주포지션,부포지션,실력,참석률,상태,메모'
   const rows = players.map((p) =>
-    [p.name, p.birthYear ?? '', p.backNumber ?? '', p.mainPosition, p.subPosition ?? '', p.skill, p.status === 'ACTIVE' ? '활동' : '휴면', (p.memo ?? '').replace(/,/g, ' ')].join(','),
+    [p.name, p.birthYear ?? '', p.backNumber ?? '', p.mainPosition, p.subPosition ?? '', p.skill, p.attendanceLevel ? ATTENDANCE_LABEL[p.attendanceLevel] : '', p.status === 'ACTIVE' ? '활동' : '휴면', (p.memo ?? '').replace(/,/g, ' ')].join(','),
   )
   return [header, ...rows].join('\n')
 }

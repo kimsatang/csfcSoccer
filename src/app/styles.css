@@ -195,6 +195,14 @@ input[type="range"] { accent-color: var(--brand); padding: 0; }
 .pool-section + .pool-section { margin-top: 12px; }
 .pool-group { margin: 0 0 6px; font-size: 14px; }
 
+.att { display: inline-block; font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0; }
+.att-HIGH { background: #e3f4ea; color: #12804a; }
+.att-MID { background: #eef1f5; color: #4a5568; }
+.att-LOW { background: #fde3e3; color: #c53030; }
+.att-none { color: var(--muted); }
+.att-select { font-size: 13px; padding: 3px 6px; font-weight: 700; }
+.att-select.att-none { color: var(--muted); }
+
 .foot { justify-content: center; margin-top: 24px; }
 
 @media (max-width: 860px) {
