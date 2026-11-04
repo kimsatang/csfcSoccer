@@ -5,6 +5,12 @@ import type { Player } from '../entities/player'
 import { POSITION_LABEL } from '../entities/player'
 import type { Team } from '../features/build-teams'
 import { TEAM_COLORS, evaluate, movePlayer, teamStats, teamsToText } from '../features/build-teams'
+import { saveMatch } from '../features/build-teams/saveMatch'
+
+const todayLocal = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 interface Props {
   teams: Team[]
@@ -23,6 +29,13 @@ export function TeamBoard({ teams, title, showSkill, dispatch, onReshuffle, onBa
   const grade = cost < 3 ? '아주 균형' : cost < 6 ? '균형' : cost < 10 ? '보통' : '불균형'
 
   const [copied, setCopied] = useState<'ok' | 'fail' | null>(null)
+  const [playedOn, setPlayedOn] = useState(todayLocal)
+  const [saveState, setSaveState] = useState<{ kind: 'idle' | 'saving' | 'saved' | 'error'; msg?: string }>({ kind: 'idle' })
+  const save = async () => {
+    setSaveState({ kind: 'saving' })
+    try { await saveMatch(title, playedOn, teams); setSaveState({ kind: 'saved', msg: `${playedOn} 경기로 저장했습니다.` }) }
+    catch (e) { setSaveState({ kind: 'error', msg: `저장 실패: ${(e as Error).message}` }) }
+  }
   const text = teamsToText(teams, title, showSkill)
   const copy = async () => {
     try { await navigator.clipboard.writeText(text); setCopied('ok'); setTimeout(() => setCopied(null), 2500) }
@@ -42,12 +55,18 @@ export function TeamBoard({ teams, title, showSkill, dispatch, onReshuffle, onBa
         <div className="row gap-s wrap">
           <label className="toggle"><input type="checkbox" checked={showSkill} onChange={(e) => dispatch({ type: 'ui/showSkill', value: e.target.checked })} /> 실력 표시</label>
           <button className="btn ghost" onClick={onBack}>참석·역할 수정</button>
-          <button className="btn" onClick={onReshuffle}>다시 섞기</button>
+          <button className="btn" onClick={() => { setSaveState({ kind: 'idle' }); onReshuffle() }}>다시 섞기</button>
+          <input type="date" className="date-input" aria-label="경기일" value={playedOn} onChange={(e) => setPlayedOn(e.target.value)} />
+          <button className="btn" onClick={save} disabled={saveState.kind === 'saving' || saveState.kind === 'saved'}>
+            {saveState.kind === 'saving' ? '저장 중…' : saveState.kind === 'saved' ? '저장됨' : '경기 기록 저장'}
+          </button>
           <button className="btn primary" onClick={copy}>결과 복사</button>
         </div>
       </header>
 
       {copied === 'ok' && <p className="toast">복사했습니다. 단톡방에 붙여넣으세요.</p>}
+      {saveState.kind === 'saved' && <p className="toast">{saveState.msg}</p>}
+      {saveState.kind === 'error' && <p className="warn">{saveState.msg}</p>}
       {copied === 'fail' && (
         <div className="csv-box">
           <p className="muted small">자동 복사가 안 되는 환경입니다. 아래 내용을 길게 눌러 복사하세요.</p>
@@ -78,7 +97,7 @@ export function TeamBoard({ teams, title, showSkill, dispatch, onReshuffle, onBa
                       className="move"
                       aria-label={`${m.name} 팀 이동`}
                       value=""
-                      onChange={(e) => dispatch({ type: 'teams/set', teams: movePlayer(teams, m.id, Number(e.target.value)) })}
+                      onChange={(e) => { setSaveState({ kind: 'idle' }); dispatch({ type: 'teams/set', teams: movePlayer(teams, m.id, Number(e.target.value)) }) }}
                     >
                       <option value="" disabled>이동</option>
                       {teams.filter((o) => o.index !== t.index).map((o) => (

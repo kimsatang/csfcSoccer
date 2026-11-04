@@ -1,10 +1,10 @@
 import { useEffect, useReducer } from 'react'
 import type { MatchRole, Player } from '../entities/player'
-import { SAMPLE_MEMBERS } from '../entities/player'
 import type { Team } from '../features/build-teams'
 import { loadJson, saveJson } from '../shared/lib/storage'
 
-const STORAGE_KEY = 'csfc-team-maker:v1'
+// 회원은 Supabase에 저장, 그 외(당일 참석·역할·편성 초안)는 기기별 localStorage
+const STORAGE_KEY = 'csfc-team-maker:v2'
 
 export interface AppState {
   members: Player[]
@@ -21,7 +21,7 @@ export type Action =
   | { type: 'member/add'; player: Player }
   | { type: 'member/update'; player: Player }
   | { type: 'member/remove'; id: string }
-  | { type: 'member/replaceAll'; players: Player[] }
+  | { type: 'member/set'; players: Player[] }
   | { type: 'member/append'; players: Player[] }
   | { type: 'attend/toggle'; id: string }
   | { type: 'attend/set'; ids: string[] }
@@ -38,7 +38,7 @@ function defaultTitle(): string {
 }
 
 const initial: AppState = {
-  members: SAMPLE_MEMBERS,
+  members: [],
   attendance: [],
   roles: {},
   matchTitle: defaultTitle(),
@@ -64,8 +64,12 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case 'member/remove':
       return { ...state, members: state.members.filter((m) => m.id !== action.id), ...withoutId(state, action.id), teams: null }
-    case 'member/replaceAll':
-      return { ...state, members: action.players, attendance: [], roles: {}, teams: null }
+    case 'member/set': {
+      // DB에서 다시 불러온 경우: 사라진 회원은 참석·역할에서 제거
+      const ids = new Set(action.players.map((p) => p.id))
+      const roles = Object.fromEntries(Object.entries(state.roles).filter(([id]) => ids.has(id)))
+      return { ...state, members: action.players, attendance: state.attendance.filter((id) => ids.has(id)), roles }
+    }
     case 'member/append':
       return { ...state, members: [...state.members, ...action.players] }
     case 'attend/toggle':
@@ -90,7 +94,11 @@ function reducer(state: AppState, action: Action): AppState {
 }
 
 export function useAppStore() {
-  const [state, dispatch] = useReducer(reducer, undefined, () => ({ ...initial, ...loadJson<Partial<AppState>>(STORAGE_KEY, {}) }))
-  useEffect(() => saveJson(STORAGE_KEY, state), [state])
+  const [state, dispatch] = useReducer(reducer, undefined, () => ({ ...initial, ...loadJson<Partial<AppState>>(STORAGE_KEY, {}), members: [] }))
+  useEffect(() => {
+    const { members: _members, ...draft } = state
+    void _members
+    saveJson(STORAGE_KEY, draft)
+  }, [state])
   return [state, dispatch] as const
 }

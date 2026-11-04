@@ -140,7 +140,17 @@ input[type="range"] { accent-color: var(--brand); padding: 0; }
 
 .toast { background: #e3f4ea; color: var(--brand); font-weight: 600; font-size: 14px; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; }
 
-.foot { text-align: center; margin-top: 24px; }
+.date-input { padding: 7px 8px; }
+.empty { text-align: center; padding: 28px 8px; }
+.userbar { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.login { max-width: 380px; margin: 12vh auto 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px 24px; display: grid; gap: 14px; }
+.login h1 { font-size: 22px; }
+.login-form { display: grid; gap: 8px; }
+.login-form input { padding: 12px; }
+.login-form .btn { padding: 12px; }
+.center { text-align: center; margin-top: 20vh; }
+
+.foot { justify-content: center; margin-top: 24px; }
 
 @media (max-width: 860px) {
   .teams { grid-template-columns: 1fr; }
