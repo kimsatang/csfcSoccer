@@ -190,7 +190,7 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
                 <span className="team-meta">{players.length}명{showSkill && rated.length > 0 && <> · 평균 {avg.toFixed(1)}</>}</span>
               </header>
               <div className="pos-summary">
-                {POSITIONS.map((p) => <span key={p} className={`pos pos-${p} light`}>{POSITION_LABEL[p]} {players.filter((a) => a.player.mainPosition === p).length}</span>)}
+                {POSITIONS.map((p) => <span key={p} className={`pos pos-${p} light`}>{POSITION_LABEL[p]} {players.filter((a) => !a.player.positionReview && a.player.mainPosition === p).length}</span>)}
               </div>
               <ul className="roster">
                 {[...players].sort((a, b) => order[a.role] - order[b.role]).map((a) => (

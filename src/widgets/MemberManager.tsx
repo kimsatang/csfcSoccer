@@ -29,6 +29,8 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
   const [csvMsg, setCsvMsg] = useState<string[]>([])
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
+  const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
+  const [onlyMissing, setOnlyMissing] = useState(false)
   // 네이티브 confirm 대신 2단계 클릭 확인 (모바일·임베드 환경 호환)
   const [armed, setArmed] = useState<string | null>(null)
   const [toast, setToast] = useState('')
@@ -50,7 +52,7 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
   const save = () => run(async () => {
     if (!draft.name.trim()) return
     // 폼으로 저장하면 운영진이 확인한 것으로 보고 '미입력' 표시를 해제
-    const body = { ...draft, name: draft.name.trim(), skill: clampSkill(draft.skill), needsReview: false }
+    const body = { ...draft, name: draft.name.trim(), skill: clampSkill(draft.skill), needsReview: false, positionReview: false }
     if (draft.id) {
       dispatch({ type: 'member/update', player: await updateMember({ ...body, id: draft.id }) })
       flash(`${body.name} 수정됨`)
@@ -66,10 +68,20 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
     dispatch({ type: 'member/update', player: await updateMember({ ...m, status: m.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' }) })
   })
 
-  /** 표에서 바로 참석률 변경 (포지션·실력 미입력 표시는 그대로 둠) */
-  const setAttendance = (m: Player, level: AttendanceLevel | undefined) => run(async () => {
-    dispatch({ type: 'member/update', player: await updateMember({ ...m, attendanceLevel: level }) })
-  })
+  /**
+   * 표에서 바로 수정 (빠른 입력). 화면 먼저 바꾸고 저장 — 실패하면 되돌림.
+   * 포지션을 고르면 '포지션 미입력', 실력을 고르면 '실력 미입력' 표시가 해제된다.
+   */
+  const quickUpdate = (m: Player, patch: Partial<Player>) => {
+    const next = { ...m, ...patch }
+    dispatch({ type: 'member/update', player: next })
+    setSavingIds((s) => new Set(s).add(m.id))
+    updateMember(next)
+      .then((saved) => dispatch({ type: 'member/update', player: saved }))
+      .catch((e) => { dispatch({ type: 'member/update', player: m }); setError(`${m.name} 저장 실패: ${(e as Error).message}`) })
+      .finally(() => setSavingIds((s) => { const n = new Set(s); n.delete(m.id); return n }))
+  }
+  const setAttendance = (m: Player, level: AttendanceLevel | undefined) => quickUpdate(m, { attendanceLevel: level })
 
   const remove = (m: Player) => run(async () => {
     await deleteMember(m.id)
@@ -99,9 +111,11 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
     catch { setCsvText(membersToCsv(members)); setCsvOpen(true) }
   }
 
-  const filtered = members.filter((m) => m.name.includes(query.trim()))
+  const filtered = members
+    .filter((m) => m.name.includes(query.trim()))
+    .filter((m) => !onlyMissing || m.needsReview || m.positionReview || !m.attendanceLevel)
   const activeCount = members.filter((m) => m.status === 'ACTIVE').length
-  const reviewCount = members.filter((m) => m.needsReview).length
+  const reviewCount = members.filter((m) => m.needsReview || m.positionReview).length
   const noAttCount = members.filter((m) => m.status === 'ACTIVE' && !m.attendanceLevel).length
 
   return (
@@ -179,7 +193,11 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
         {draft.id && <button className="btn ghost" type="button" onClick={() => setDraft(emptyDraft())}>취소</button>}
       </form>
 
-      <input className="search" placeholder="이름 검색" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <div className="row gap-s wrap quick-bar">
+        <input className="search" placeholder="이름 검색" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <label className="toggle"><input type="checkbox" checked={onlyMissing} onChange={(e) => setOnlyMissing(e.target.checked)} /> 미입력 있는 회원만 ({members.filter((m) => m.needsReview || m.positionReview || !m.attendanceLevel).length})</label>
+        <span className="muted small">표에서 바로 고르면 자동 저장됩니다.</span>
+      </div>
 
       <div className="table-wrap">
         <table className="members">
@@ -192,9 +210,40 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
                 <td>{shortYear(m.birthYear)}</td>
                 <td className="muted">{m.backNumber ?? '-'}</td>
                 <td><b>{m.name}</b></td>
-                <td><span className={`pos pos-${m.mainPosition}`}>{POSITION_LABEL[m.mainPosition]}</span></td>
-                <td>{m.subPosition ? <span className={`pos pos-${m.subPosition} light`}>{POSITION_LABEL[m.subPosition]}</span> : <span className="muted">-</span>}</td>
-                <td>{m.needsReview ? <span className="review-chip">미입력</span> : <SkillBar value={m.skill} />}</td>
+                <td>
+                  <select
+                    className={`q-select ${m.positionReview ? 'q-missing' : `q-pos-${m.mainPosition}`}`}
+                    aria-label={`${m.name} 주포지션`}
+                    value={m.positionReview ? '' : m.mainPosition}
+                    onChange={(e) => e.target.value && quickUpdate(m, { mainPosition: e.target.value as Position, positionReview: false })}
+                  >
+                    {m.positionReview && <option value="">미입력</option>}
+                    {POSITIONS.map((p) => <option key={p} value={p}>{POSITION_LABEL[p]}</option>)}
+                  </select>
+                </td>
+                <td>
+                  <select
+                    className="q-select"
+                    aria-label={`${m.name} 부포지션`}
+                    value={m.subPosition ?? ''}
+                    onChange={(e) => quickUpdate(m, { subPosition: (e.target.value || undefined) as Position | undefined })}
+                  >
+                    <option value="">-</option>
+                    {POSITIONS.map((p) => <option key={p} value={p}>{POSITION_LABEL[p]}</option>)}
+                  </select>
+                </td>
+                <td>
+                  <select
+                    className={`q-select q-skill ${m.needsReview ? 'q-missing' : ''}`}
+                    aria-label={`${m.name} 실력`}
+                    value={m.needsReview ? '' : String(m.skill)}
+                    onChange={(e) => e.target.value && quickUpdate(m, { skill: Number(e.target.value), needsReview: false })}
+                  >
+                    {m.needsReview && <option value="">미입력</option>}
+                    {Array.from({ length: SKILL_MAX - SKILL_MIN + 1 }, (_, i) => SKILL_MAX - i).map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                  {savingIds.has(m.id) && <span className="muted small"> 저장…</span>}
+                </td>
                 <td>
                   <select
                     className={`att-select att-${m.attendanceLevel ?? 'none'}`}

@@ -76,6 +76,16 @@ export async function sendMagicLink(email: string, inviteToken?: string | null):
   if (error) throw error
 }
 
+/** 메일로 받은 인증번호로 로그인 (링크를 다른 브라우저에서 여는 문제를 피하는 방법) */
+export async function verifyEmailCode(email: string, code: string): Promise<void> {
+  const { error } = await supabase.auth.verifyOtp({
+    email: email.trim().toLowerCase(),
+    token: code.replace(/\s/g, ''),
+    type: 'email',
+  })
+  if (error) throw new Error(/expired|invalid/i.test(error.message) ? '인증번호가 틀렸거나 만료되었습니다. 다시 받아 주세요.' : error.message)
+}
+
 export async function signOut(): Promise<void> {
   await supabase.auth.signOut()
 }

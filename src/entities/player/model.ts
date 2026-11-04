@@ -51,8 +51,10 @@ export interface Player {
   backNumber?: number
   /** 출생년도 4자리 (선택) — 드래프트 나이대 그룹 */
   birthYear?: number
-  /** 포지션·실력이 임시값이라 확인이 필요한 회원 */
+  /** 실력이 임시값(5)이라 입력이 필요한 회원 */
   needsReview?: boolean
+  /** 포지션이 임시값(미드)이라 입력이 필요한 회원 */
+  positionReview?: boolean
   /** 참석률 등급 (선택) — 드래프트 참고, 팀별 분포 표시 */
   attendanceLevel?: AttendanceLevel
   /** 회원 상태 (필수, 기본 ACTIVE) */

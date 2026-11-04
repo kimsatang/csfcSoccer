@@ -45,3 +45,8 @@ export function parseBirthYear(raw: string | undefined): number | undefined {
 export function skillText(p: Pick<Player, 'skill' | 'needsReview'>): string {
   return p.needsReview ? '-' : String(p.skill)
 }
+
+/** 포지션이 입력된 회원인지 (임시값 '미드'는 제외) */
+export function hasPosition(p: Pick<Player, 'positionReview'>): boolean {
+  return !p.positionReview
+}

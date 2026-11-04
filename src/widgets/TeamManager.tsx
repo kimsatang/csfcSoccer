@@ -139,8 +139,8 @@ export function TeamManager({ members, bundle, viewer }: Props) {
     for (const s of slots) {
       if (next[s.key]) continue
       const want = SLOT_POS[s.label]
-      const p = take((x) => !x.needsReview && x.mainPosition === want)
-        ?? take((x) => !x.needsReview && x.subPosition === want)
+      const p = take((x) => !x.positionReview && x.mainPosition === want)
+        ?? take((x) => !x.positionReview && x.subPosition === want)
         ?? (want === 'GK' ? undefined : take(() => true))
       if (p) next = assignSlot(next, s.key, p.id)
     }
@@ -281,7 +281,7 @@ export function TeamManager({ members, bundle, viewer }: Props) {
                 {bench.map((p) => (
                   <span key={p.id} className="bench-chip">
                     {p.name} <span className="year">{shortYear(p.birthYear)}</span>
-                    {!p.needsReview && <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>}
+                    {!p.positionReview && <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>}
                   </span>
                 ))}
               </div>
@@ -327,7 +327,7 @@ export function TeamManager({ members, bundle, viewer }: Props) {
                     >
                       <span className="name">{p.name}</span>
                       <span className="year">{shortYear(p.birthYear)}</span>
-                      {!p.needsReview && <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>}
+                      {!p.positionReview && <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>}
                       {atLabel && <span className="muted small">{at === pickSlot.key ? '현재' : `${atLabel}에서 교대`}</span>}
                     </button>
                   </li>

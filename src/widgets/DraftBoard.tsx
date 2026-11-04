@@ -7,6 +7,7 @@ import { finishDraft, makePick, reopenDraft, setDraftOrder, undoLastPick } from 
 import { TEAM_COLORS } from '../features/build-teams'
 import { AttendanceBadge } from './AttendanceBadge'
 import { shuffle } from '../shared/lib/rng'
+import { supabase } from '../shared/api/supabase'
 
 interface Props {
   members: Player[]
@@ -44,12 +45,26 @@ export function DraftBoard({ members, bundle, showSkill, onChanged, isAdmin, myT
   const myTurn = myTeamIds.includes(onClock.id)
   const canPick = drafting && (isAdmin || myTurn)
 
-  // 여러 폰에서 동시에 진행하므로 지명 중에는 5초마다 새로 불러옴
+  // 여러 폰에서 동시에 진행: Realtime으로 지명·순서·완료를 즉시 반영, 연결이 끊긴 경우를 대비해 20초 폴링 병행
+  const [live, setLive] = useState(false)
   useEffect(() => {
-    if (!drafting) return
-    const t = window.setInterval(() => { if (!document.hidden) void onChanged() }, 5000)
-    return () => window.clearInterval(t)
-  }, [drafting, onChanged])
+    let timer: number | undefined
+    const refresh = () => { window.clearTimeout(timer); timer = window.setTimeout(() => void onChanged(), 250) }
+    const channel = supabase
+      .channel(`draft:${season.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'draft_picks' }, refresh)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'seasons', filter: `id=eq.${season.id}` }, refresh)
+      .subscribe((status) => setLive(status === 'SUBSCRIBED'))
+    const poll = window.setInterval(() => { if (!document.hidden) void onChanged() }, 20000)
+    const onVisible = () => { if (!document.hidden) void onChanged() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearTimeout(timer)
+      window.clearInterval(poll)
+      document.removeEventListener('visibilitychange', onVisible)
+      void supabase.removeChannel(channel)
+    }
+  }, [season.id, onChanged])
   const upcoming = [1, 2, 3].map((k) => teamForPick(bundle, pickNo + k).name.replace(/팀$/, ''))
   const filtered = available
     .filter((p) => (pos === 'ALL' ? true : p.mainPosition === pos || p.subPosition === pos))
@@ -145,7 +160,8 @@ export function DraftBoard({ members, bundle, showSkill, onChanged, isAdmin, myT
             <span className="muted small">{round}라운드 · 전체 {pickNo}번째 지명</span>
           </div>
           <span className="muted small">
-            {myTurn ? <b className="my-turn">우리 팀 차례입니다! 아래에서 지명하세요.</b> : !isAdmin && '다른 팀 차례 · 자동 새로고침 중'}
+            {myTurn ? <b className="my-turn">우리 팀 차례입니다! 아래에서 지명하세요.</b> : !isAdmin && '다른 팀 차례'}
+            {' '}<span className={`live ${live ? 'on' : ''}`}>{live ? '● 실시간' : '○ 연결 중'}</span>
             {' '}다음: {upcoming.join(' → ')}
           </span>
         </div>
@@ -212,8 +228,8 @@ export function DraftBoard({ members, bundle, showSkill, onChanged, isAdmin, myT
                   <span className="year">{shortYear(p.birthYear)}</span>
                   <span className="name">{p.name}</span>
                   <AttendanceBadge level={p.attendanceLevel} compact />
-                  {!p.needsReview && <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>}
-                  {!p.needsReview && p.subPosition && <span className={`pos pos-${p.subPosition} light`}>{POSITION_LABEL[p.subPosition]}</span>}
+                  {!p.positionReview && <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>}
+                  {!p.positionReview && p.subPosition && <span className={`pos pos-${p.subPosition} light`}>{POSITION_LABEL[p.subPosition]}</span>}
                   {showSkill && <span className="skill-num">{skillText(p)}</span>}
                   <button
                     className="btn pick-btn"
@@ -239,8 +255,9 @@ function RosterCard({ roster, showSkill, active }: { roster: Roster; showSkill: 
   const { team, captain, vice, picks } = roster
   const players = [captain, vice, ...picks.map((p) => p.player)].filter(Boolean) as Player[]
   const rated = players.filter((p) => !p.needsReview)
+  const positioned = players.filter((p) => !p.positionReview)
   const avg = rated.length ? rated.reduce((s, p) => s + p.skill, 0) / rated.length : 0
-  const posCount = (p: Position) => rated.filter((x) => x.mainPosition === p).length
+  const posCount = (p: Position) => positioned.filter((x) => x.mainPosition === p).length
   return (
     <article className={`team ${active ? 'team-active' : ''}`} style={{ ['--team' as string]: TEAM_COLORS[team.slot].hex }}>
       <header className="team-head">
@@ -260,7 +277,7 @@ function RosterCard({ roster, showSkill, active }: { roster: Roster; showSkill: 
           ))}
         </div>
       )}
-      {rated.length > 0 && (
+      {positioned.length > 0 && (
         <div className="pos-summary">
           {POSITIONS.map((p) => <span key={p} className={`pos pos-${p} light`}>{POSITION_LABEL[p]} {posCount(p)}</span>)}
         </div>
@@ -280,7 +297,7 @@ function Row({ p, badge, pickNo, showSkill }: { p: Player; badge?: string; pickN
       {badge ? <span className={`badge ${badge === '팀장' ? 'cap' : 'vice'}`}>{badge}</span> : <span className="pick-no">#{pickNo}</span>}
       <span className="name">{p.name} <span className="year">{shortYear(p.birthYear)}</span></span>
       <AttendanceBadge level={p.attendanceLevel} compact />
-      {!p.needsReview && <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>}
+      {!p.positionReview && <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>}
       {showSkill && <span className="skill-num">{skillText(p)}</span>}
     </li>
   )
@@ -290,7 +307,7 @@ function draftText(seasonName: string, dates: string[], rs: Roster[]): string {
   const blocks = rs.map((r) => [
     `[${r.team.name}] ${2 + r.picks.length}명`,
     `팀장 ${r.captain?.name ?? '-'} / 부팀장 ${r.vice?.name ?? '-'}`,
-    ...r.picks.map(({ player }, i) => `${i + 1}. ${player.name} (${shortYear(player.birthYear)}${player.needsReview ? '' : ` · ${POSITION_LABEL[player.mainPosition]}`})`),
+    ...r.picks.map(({ player }, i) => `${i + 1}. ${player.name} (${shortYear(player.birthYear)}${player.positionReview ? '' : ` · ${POSITION_LABEL[player.mainPosition]}`})`),
   ].join('\n'))
   return [`⚽ CSFC ${seasonName} 팀 명단`, `경기: ${dates.map(shortDate).join(', ')}`, ...blocks].join('\n\n')
 }

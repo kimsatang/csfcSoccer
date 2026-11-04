@@ -12,10 +12,11 @@ interface MemberRow {
   memo: string | null
   birth_year: number | null
   needs_review: boolean
+  position_review: boolean
   attendance_level: AttendanceLevel | null
 }
 
-const COLUMNS = 'id,name,back_number,main_position,sub_position,skill,status,memo,birth_year,needs_review,attendance_level'
+const COLUMNS = 'id,name,back_number,main_position,sub_position,skill,status,memo,birth_year,needs_review,position_review,attendance_level'
 
 function fromRow(r: MemberRow): Player {
   return {
@@ -29,6 +30,7 @@ function fromRow(r: MemberRow): Player {
     memo: r.memo ?? undefined,
     birthYear: r.birth_year ?? undefined,
     needsReview: r.needs_review,
+    positionReview: r.position_review,
     attendanceLevel: r.attendance_level ?? undefined,
   }
 }
@@ -44,6 +46,7 @@ function toRow(p: Omit<Player, 'id'>): Omit<MemberRow, 'id'> {
     memo: p.memo ?? null,
     birth_year: p.birthYear ?? null,
     needs_review: p.needsReview ?? false,
+    position_review: p.positionReview ?? false,
     attendance_level: p.attendanceLevel ?? null,
   }
 }
