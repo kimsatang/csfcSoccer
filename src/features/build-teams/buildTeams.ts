@@ -6,9 +6,9 @@ import { shuffle } from '../../shared/lib/rng'
 export const TEAM_COUNT = 3
 
 export const TEAM_COLORS = [
-  { key: 'RED', label: '빨강', hex: '#e5484d' },
-  { key: 'BLUE', label: '파랑', hex: '#3e63dd' },
-  { key: 'YELLOW', label: '노랑', hex: '#f5b800' },
+  { key: 'RED', label: '빨강', hex: '#e5484d', mantine: 'red' },
+  { key: 'BLUE', label: '파랑', hex: '#3e63dd', mantine: 'blue' },
+  { key: 'YELLOW', label: '노랑', hex: '#f5b800', mantine: 'yellow' },
 ] as const
 
 export interface Team {

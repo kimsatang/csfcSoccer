@@ -51,6 +51,23 @@ function toRow(p: Omit<Player, 'id'>): Omit<MemberRow, 'id'> {
   }
 }
 
+interface LeaderMemberRow {
+  id: string; name: string; back_number: number | null; main_position: Position; sub_position: Position | null
+  status: MemberStatus; birth_year: number | null; attendance_level: AttendanceLevel | null; position_review: boolean
+}
+
+/** 팀장·부팀장용: 실력·메모가 빠진 목록 (DB에서 차단, 화면에는 '실력 미입력'처럼 취급) */
+export async function fetchMembersForLeader(): Promise<Player[]> {
+  const { data, error } = await supabase.rpc('list_members_for_leader')
+  if (error) throw error
+  return ((data ?? []) as LeaderMemberRow[]).map((r) => ({
+    id: r.id, name: r.name, backNumber: r.back_number ?? undefined, mainPosition: r.main_position,
+    subPosition: r.sub_position ?? undefined, status: r.status, birthYear: r.birth_year ?? undefined,
+    attendanceLevel: r.attendance_level ?? undefined, positionReview: r.position_review,
+    skill: 5, needsReview: true,
+  }))
+}
+
 export async function fetchMembers(): Promise<Player[]> {
   const { data, error } = await supabase.from('members').select(COLUMNS).order('birth_year', { nullsFirst: false }).order('name')
   if (error) throw error

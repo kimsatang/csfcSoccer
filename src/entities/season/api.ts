@@ -69,3 +69,15 @@ export async function reopenDraft(seasonId: string): Promise<void> {
   const { error } = await supabase.from('seasons').update({ status: 'DRAFTING' }).eq('id', seasonId)
   if (error) throw error
 }
+
+/** 슈퍼관리자: 확정된 팀에서 선수를 다른 팀으로 이동 */
+export async function movePick(seasonId: string, pickNo: number, teamId: string): Promise<void> {
+  const { error } = await supabase.from('draft_picks').update({ team_id: teamId }).eq('season_id', seasonId).eq('pick_no', pickNo)
+  if (error) throw error
+}
+
+/** 슈퍼관리자: 지명 취소 (선수는 미배정으로) */
+export async function cancelPick(seasonId: string, pickNo: number): Promise<void> {
+  const { error } = await supabase.from('draft_picks').delete().eq('season_id', seasonId).eq('pick_no', pickNo)
+  if (error) throw error
+}

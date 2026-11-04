@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { Alert, Button, Paper, Stack, Text, Title } from '@mantine/core'
+import { IconUserCheck } from '@tabler/icons-react'
+import { AuthLayout } from '../auth/AuthLayout'
 import { signOut } from '../auth/useAuth'
 import type { InviteInfo } from './api'
 import { LEADER_ROLE_LABEL, claimInvite, clearInviteToken } from './api'
@@ -18,24 +21,23 @@ export function InviteConfirm({ email, token, info, onDone }: {
   const skip = () => { clearInviteToken(); onDone() }
 
   return (
-    <div className="login">
-      <h1><span className="logo">CSFC</span> 팀짜기</h1>
+    <AuthLayout>
       {info ? (
-        <div className="invite-card">
-          <span className="muted small">{info.seasonName}</span>
-          <strong>{info.teamName} {LEADER_ROLE_LABEL[info.role]}{info.memberName && ` · ${info.memberName}`}</strong>
-          <span className="small"><b>{email}</b> 계정을 이 팀의 {LEADER_ROLE_LABEL[info.role]}으로 등록합니다.</span>
-          <span className="muted small">본인 링크가 맞는지 확인하세요. 등록하면 다른 계정은 이 링크를 쓸 수 없습니다.</span>
-        </div>
+        <Paper p="md" radius="md" bg="brand.0" withBorder style={{ borderColor: 'var(--mantine-color-brand-2)' }}>
+          <Text size="xs" c="dimmed">{info.seasonName}</Text>
+          <Title order={4} mt={4}>{info.teamName} {LEADER_ROLE_LABEL[info.role]}{info.memberName && ` · ${info.memberName}`}</Title>
+          <Text size="sm" mt={8}><b>{email}</b> 계정을 이 팀의 {LEADER_ROLE_LABEL[info.role]}으로 등록합니다.</Text>
+          <Text size="xs" c="dimmed" mt={6}>본인 링크가 맞는지 확인하세요. 등록하면 다른 계정은 이 링크를 쓸 수 없습니다.</Text>
+        </Paper>
       ) : (
-        <p className="warn">초대 링크가 만료되었거나 잘못되었습니다. 운영진에게 새 링크를 요청하세요.</p>
+        <Alert color="red" title="초대 링크 오류">초대 링크가 만료되었거나 잘못되었습니다. 운영진에게 새 링크를 요청하세요.</Alert>
       )}
-      {error && <p className="warn">{error}</p>}
-      <div className="login-form">
-        {info && <button className="btn primary" disabled={busy} onClick={accept}>{busy ? '등록 중…' : '등록하고 시작하기'}</button>}
-        <button className="btn ghost" disabled={busy} onClick={skip}>등록하지 않고 계속</button>
-        <button className="btn ghost" disabled={busy} onClick={() => signOut()}>다른 이메일로 로그인</button>
-      </div>
-    </div>
+      {error && <Alert color="red" variant="light">{error}</Alert>}
+      <Stack gap="xs">
+        {info && <Button size="md" leftSection={<IconUserCheck size={18} />} loading={busy} onClick={accept}>등록하고 시작하기</Button>}
+        <Button size="md" variant="default" disabled={busy} onClick={skip}>등록하지 않고 계속</Button>
+        <Button size="md" variant="subtle" color="gray" disabled={busy} onClick={() => signOut()}>다른 이메일로 로그인</Button>
+      </Stack>
+    </AuthLayout>
   )
 }

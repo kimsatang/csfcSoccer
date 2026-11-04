@@ -1,5 +1,11 @@
 import { useMemo, useState } from 'react'
 import type { Dispatch } from 'react'
+import {
+  Accordion, Alert, Badge, Button, Card, Chip, Group, Menu, NativeSelect, Paper, SimpleGrid, Stack, Switch, Text, TextInput,
+} from '@mantine/core'
+import { IconArrowsExchange, IconCopy, IconDeviceFloppy, IconDownload, IconWand } from '@tabler/icons-react'
+import { confirmAction, copyText, notify } from '../shared/ui/feedback'
+import { PosBadge, RoleBadge } from '../shared/ui/badges'
 import type { Action, DayDraft } from '../app/store'
 import type { Player } from '../entities/player'
 import { POSITIONS, POSITION_LABEL, shortYear, skillText } from '../entities/player'
@@ -25,10 +31,8 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
   const [date, setDate] = useState(() => nextMatchDate(bundle.season) ?? dates[0])
   const day = days[date] ?? { attendance: [], overrides: {} }
   const title = day.title ?? `CSFC ${shortDate(date)} 경기`
-  const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [saved, setSaved] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [toast, setToast] = useState('')
-  const [attendOpen, setAttendOpen] = useState(day.attendance.length === 0)
 
   const teamRosters = useMemo(() => rosters(members, bundle), [members, bundle])
   const homeSlot = useMemo(() => {
@@ -57,7 +61,7 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
   const counts = bySlot.map((t) => t.length)
   const gap = Math.max(...counts) - Math.min(...counts)
 
-  const setOverride = (id: string, slot: number | null) => { setSaveMsg(null); dispatch({ type: 'day/override', date, id, slot }) }
+  const setOverride = (id: string, slot: number | null) => { setSaved(null); dispatch({ type: 'day/override', date, id, slot }) }
 
   /** 미배정 참석자를 인원 적은 팀 → 평균 실력 낮은 팀 순으로 자동 배치 */
   const autoAssign = () => {
@@ -77,176 +81,174 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
         ...t.map((a) => `- ${a.player.name}${a.role === 'CAPTAIN' ? ' (팀장)' : a.role === 'VICE' ? ' (부팀장)' : ''}${a.homeSlot !== undefined && a.homeSlot !== a.slot ? ' *임시' : ''}`),
       ].join('\n')),
     ].join('\n\n')
-    try { await navigator.clipboard.writeText(text); setToast('복사했습니다. 단톡방에 붙여넣으세요.') }
-    catch { setToast('자동 복사가 안 되는 환경입니다.') }
-    setTimeout(() => setToast(''), 2500)
+    await copyText(text, '복사했습니다. 단톡방에 붙여넣으세요.')
   }
 
   const save = async () => {
-    setBusy(true); setSaveMsg(null)
+    if (!(await confirmAction({ title: `${shortDate(date)} 경기 기록을 저장할까요?`, message: `참석 ${attending.length}명의 팀 배정이 기록됩니다.` }))) return
+    setBusy(true)
     try {
       const players = attending.filter((a) => a.slot !== undefined).map((a) => ({ member_id: a.player.id, role: a.role, team_index: a.slot! }))
       await saveMatch(title, date, players, bundle.season.id)
-      setSaveMsg({ ok: true, text: `${shortDate(date)} 경기 기록을 저장했습니다.` })
+      setSaved(date)
+      notify.ok(`${shortDate(date)} 경기 기록을 저장했습니다.`)
     } catch (e) {
-      setSaveMsg({ ok: false, text: `저장 실패: ${(e as Error).message}` })
+      notify.error(`저장 실패: ${(e as Error).message}`)
     } finally { setBusy(false) }
   }
 
+  const importLeaders = async () => {
+    try {
+      const ids = await fetchDayAttendeesAllTeams(date)
+      dispatch({ type: 'day/setAttendance', date, ids })
+      notify.ok(`팀장 입력 참석자 ${ids.length}명을 불러왔습니다.`)
+    } catch (e) { notify.error((e as Error).message) }
+  }
+  const toggle = (id: string) => { setSaved(null); dispatch({ type: 'day/toggle', date, id }) }
+
   const teamName = (slot: number) => bundle.teams.find((t) => t.slot === slot)?.name ?? TEAM_COLORS[slot].label
 
+  const order = { CAPTAIN: 0, VICE: 1, MEMBER: 2 }
+  const groups = [
+    ...teamRosters.map((r) => ({
+      key: r.team.id, title: r.team.name, slot: r.team.slot,
+      players: [r.captain, r.vice, ...r.picks.map((p) => p.player)].filter((p): p is Player => !!p && p.status === 'ACTIVE'),
+    })),
+    ...(unassignedMembers.length ? [{ key: 'none', title: '팀 미배정', slot: -1, players: unassignedMembers }] : []),
+  ]
+
   return (
-    <section className="panel">
-      <header className="panel-head">
-        <div className="grow">
-          <div className="row gap-s wrap">
-            <select className="date-select" value={date} onChange={(e) => { setDate(e.target.value); setSaveMsg(null) }}>
-              {dates.map((d) => <option key={d} value={d}>{shortDate(d)}</option>)}
-            </select>
-            <input className="title-input" value={title} onChange={(e) => dispatch({ type: 'day/title', date, title: e.target.value })} />
-          </div>
-          <p className="muted">참석 {attending.length}명 · {counts.map((c, i) => `${teamName(i).replace(/팀$/, '')} ${c}`).join(' / ')}</p>
-        </div>
-        <div className="row gap-s wrap">
-          <label className="toggle"><input type="checkbox" checked={showSkill} onChange={(e) => dispatch({ type: 'ui/showSkill', value: e.target.checked })} /> 실력 표시</label>
-          <button className="btn ghost" onClick={copy} disabled={!attending.length}>결과 복사</button>
-          <button className="btn primary" onClick={save} disabled={busy || !attending.length || waiting.length > 0 || saveMsg?.ok}>
-            {busy ? '저장 중…' : saveMsg?.ok ? '저장됨' : '경기 기록 저장'}
-          </button>
-        </div>
-      </header>
+    <Stack gap="sm">
+      <Card padding="md">
+        <Group gap="xs" wrap="nowrap" align="flex-end">
+          <NativeSelect
+            label="경기일" w={120} value={date} onChange={(e) => { setDate(e.currentTarget.value); setSaved(null) }}
+            data={dates.map((d) => ({ value: d, label: shortDate(d) }))} styles={{ input: { fontWeight: 800 } }}
+          />
+          <TextInput label="제목" style={{ flex: 1 }} value={title} onChange={(e) => dispatch({ type: 'day/title', date, title: e.currentTarget.value })} />
+        </Group>
+        <Group gap={6} mt="sm">
+          <Badge variant="light" color="gray">참석 {attending.length}</Badge>
+          {counts.map((c, i) => <Badge key={i} variant="light" color={TEAM_COLORS[i].mantine}>{teamName(i).replace(/팀$/, '')} {c}</Badge>)}
+          {saved === date && <Badge>기록 저장됨</Badge>}
+        </Group>
+        <Group gap={6} mt="md" grow>
+          <Button variant="default" leftSection={<IconCopy size={16} />} disabled={!attending.length} onClick={copy}>결과 복사</Button>
+          <Button leftSection={<IconDeviceFloppy size={16} />} loading={busy} disabled={!attending.length || waiting.length > 0 || saved === date} onClick={save}>기록 저장</Button>
+        </Group>
+        <Group justify="space-between" mt="sm">
+          <Switch size="sm" label="실력 표시" checked={showSkill} onChange={(e) => dispatch({ type: 'ui/showSkill', value: e.currentTarget.checked })} />
+        </Group>
+      </Card>
 
-      {toast && <p className="toast">{toast}</p>}
-      {saveMsg && <p className={saveMsg.ok ? 'toast' : 'warn'}>{saveMsg.text}</p>}
-
-      <details className="attend-box" open={attendOpen} onToggle={(e) => setAttendOpen(e.currentTarget.open)}>
-        <summary>참석 체크 <span className="muted">({attending.length}/{active.length})</span></summary>
-        <div className="row gap-s wrap attend-actions">
-          <button className="btn ghost" onClick={() => dispatch({ type: 'day/setAttendance', date, ids: active.map((m) => m.id) })}>전체 참석</button>
-          <button className="btn ghost" onClick={() => dispatch({ type: 'day/setAttendance', date, ids: [] })}>전체 해제</button>
-          <button
-            className="btn ghost"
-            title="팀 관리 화면에서 팀장·부팀장이 체크한 참석자를 불러옵니다"
-            onClick={() => fetchDayAttendeesAllTeams(date)
-              .then((ids) => { dispatch({ type: 'day/setAttendance', date, ids }); setToast(`팀장 입력 참석자 ${ids.length}명을 불러왔습니다.`); setTimeout(() => setToast(''), 2500) })
-              .catch((e) => setToast((e as Error).message))}
-          >
-            팀장 입력 불러오기
-          </button>
-        </div>
-        <div className="attend-groups">
-          {teamRosters.map((r) => (
-            <AttendGroup
-              key={r.team.id}
-              title={r.team.name}
-              color={TEAM_COLORS[r.team.slot].hex}
-              players={[r.captain, r.vice, ...r.picks.map((p) => p.player)].filter((p): p is Player => !!p && p.status === 'ACTIVE')}
-              checked={day.attendance}
-              onToggle={(id) => { setSaveMsg(null); dispatch({ type: 'day/toggle', date, id }) }}
-            />
-          ))}
-          {unassignedMembers.length > 0 && (
-            <AttendGroup
-              title="팀 미배정"
-              color="#9aa59d"
-              players={unassignedMembers}
-              checked={day.attendance}
-              onToggle={(id) => { setSaveMsg(null); dispatch({ type: 'day/toggle', date, id }) }}
-            />
-          )}
-        </div>
-      </details>
+      <Card padding={0}>
+        <Accordion defaultValue={day.attendance.length === 0 ? 'att' : null}>
+          <Accordion.Item value="att" style={{ borderBottom: 0 }}>
+            <Accordion.Control><Text fw={800}>참석 체크 <Text span c="dimmed" fw={600}>{attending.length}/{active.length}</Text></Text></Accordion.Control>
+            <Accordion.Panel>
+              <Group gap={6} mb="sm">
+                <Button size="compact-sm" variant="light" leftSection={<IconDownload size={14} />} onClick={importLeaders}>팀장 입력 불러오기</Button>
+                <Button size="compact-sm" variant="default" onClick={() => dispatch({ type: 'day/setAttendance', date, ids: active.map((m) => m.id) })}>전체 참석</Button>
+                <Button size="compact-sm" variant="subtle" color="gray" onClick={() => dispatch({ type: 'day/setAttendance', date, ids: [] })}>전체 해제</Button>
+              </Group>
+              <Stack gap="sm">
+                {groups.map((g) => {
+                  const color = g.slot >= 0 ? TEAM_COLORS[g.slot] : null
+                  return (
+                    <div key={g.key} style={{ borderLeft: `4px solid ${color?.hex ?? 'var(--mantine-color-gray-4)'}`, paddingLeft: 10 }}>
+                      <Text size="sm" fw={800} mb={6}>{g.title} <Text span c="dimmed" size="sm">{g.players.filter((p) => day.attendance.includes(p.id)).length}/{g.players.length}</Text></Text>
+                      <Group gap={6}>
+                        {g.players.map((p) => (
+                          <Chip key={p.id} size="sm" checked={day.attendance.includes(p.id)} onChange={() => toggle(p.id)} color={color?.mantine ?? 'gray'}>{p.name}</Chip>
+                        ))}
+                      </Group>
+                    </div>
+                  )
+                })}
+              </Stack>
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
+      </Card>
 
       {waiting.length > 0 && (
-        <div className="waiting">
-          <p><b>팀 미배정 참석자 {waiting.length}명</b> <span className="muted small">— 드래프트되지 않은 회원(신입 등). 오늘 뛸 팀을 정해 주세요.</span></p>
-          <div className="row gap-s wrap">
+        <Alert color="orange" title={`팀 미배정 참석자 ${waiting.length}명`}>
+          <Text size="sm" mb="xs">드래프트되지 않은 회원(신입 등)입니다. 오늘 뛸 팀을 정해 주세요.</Text>
+          <Stack gap={6}>
             {waiting.map((a) => (
-              <span key={a.player.id} className="waiting-chip">
-                {a.player.name} <span className={`pos pos-${a.player.mainPosition}`}>{POSITION_LABEL[a.player.mainPosition]}</span>
-                <MoveSelect current={undefined} teamName={teamName} onChange={(s) => setOverride(a.player.id, s)} />
-              </span>
+              <Group key={a.player.id} justify="space-between" wrap="nowrap">
+                <Text fw={700} size="sm">{a.player.name}</Text>
+                <MoveMenu label="팀 선택" current={undefined} teamName={teamName} onChange={(s) => setOverride(a.player.id, s)} />
+              </Group>
             ))}
-            <button className="btn" onClick={autoAssign}>자동 배치</button>
-          </div>
-        </div>
+          </Stack>
+          <Button mt="sm" size="xs" variant="white" leftSection={<IconWand size={14} />} onClick={autoAssign}>자동 배치</Button>
+        </Alert>
       )}
 
       {gap >= 2 && attending.length > 0 && (
-        <p className="warn">팀 인원 차이가 {gap}명입니다. 인원이 많은 팀에서 '오늘만 이동'으로 맞출 수 있어요.</p>
+        <Alert color="yellow" variant="light">팀 인원 차이가 {gap}명입니다. 인원이 많은 팀에서 <b>오늘만 이동</b>으로 맞출 수 있어요.</Alert>
       )}
 
-      <div className="teams">
+      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
         {bySlot.map((players, slot) => {
           const r = teamRosters.find((x) => x.team.slot === slot)
           const absentLeaders = [r?.captain, r?.vice].filter((p) => p && !day.attendance.includes(p.id)) as Player[]
           const rated = players.filter((a) => !a.player.needsReview)
           const avg = rated.length ? rated.reduce((s, a) => s + a.player.skill, 0) / rated.length : 0
-          const order = { CAPTAIN: 0, VICE: 1, MEMBER: 2 }
+          const color = TEAM_COLORS[slot]
           return (
-            <article key={slot} className="team" style={{ ['--team' as string]: TEAM_COLORS[slot].hex }}>
-              <header className="team-head">
-                <h3>{teamName(slot)}</h3>
-                <span className="team-meta">{players.length}명{showSkill && rated.length > 0 && <> · 평균 {avg.toFixed(1)}</>}</span>
-              </header>
-              <div className="pos-summary">
-                {POSITIONS.map((p) => <span key={p} className={`pos pos-${p} light`}>{POSITION_LABEL[p]} {players.filter((a) => !a.player.positionReview && a.player.mainPosition === p).length}</span>)}
-              </div>
-              <ul className="roster">
+            <Card key={slot} padding="sm" className="team-card" style={{ ['--team' as string]: color.hex }}>
+              <Group justify="space-between" mb={6}>
+                <Text fw={900} size="lg" c={`${color.mantine}.8`}>{teamName(slot)}</Text>
+                <Text size="xs" c="dimmed" fw={700}>{players.length}명{showSkill && rated.length > 0 && ` · 평균 ${avg.toFixed(1)}`}</Text>
+              </Group>
+              <Group gap={4} mb={6}>
+                {POSITIONS.map((p) => <Badge key={p} size="xs" variant="outline" radius="sm">{POSITION_LABEL[p]} {players.filter((a) => !a.player.positionReview && a.player.mainPosition === p).length}</Badge>)}
+              </Group>
+              <Stack gap={4}>
                 {[...players].sort((a, b) => order[a.role] - order[b.role]).map((a) => (
-                  <li key={a.player.id} className={a.role !== 'MEMBER' ? 'leader' : ''}>
-                    {a.role === 'CAPTAIN' && <span className="badge cap">팀장</span>}
-                    {a.role === 'VICE' && <span className="badge vice">부팀장</span>}
-                    <span className="name">{a.player.name} <span className="year">{shortYear(a.player.birthYear)}</span>{a.homeSlot !== undefined && a.homeSlot !== slot && <span className="temp"> 임시</span>}</span>
-                    <span className={`pos pos-${a.player.mainPosition}`}>{POSITION_LABEL[a.player.mainPosition]}</span>
-                    {showSkill && <span className="skill-num">{skillText(a.player)}</span>}
-                    <MoveSelect
-                      current={slot}
-                      home={a.homeSlot}
-                      teamName={teamName}
-                      onChange={(s) => setOverride(a.player.id, s === a.homeSlot ? null : s)}
-                    />
-                  </li>
+                  <Paper key={a.player.id} withBorder px={8} py={5} radius="md">
+                    <Group gap={6} wrap="nowrap">
+                      {a.role === 'CAPTAIN' && <RoleBadge role="팀장" color={color.mantine} />}
+                      {a.role === 'VICE' && <RoleBadge role="부팀장" color={color.mantine} />}
+                      <Text fw={700} size="sm" style={{ flex: 1 }} truncate>
+                        {a.player.name} <span className="year">{shortYear(a.player.birthYear)}</span>
+                        {a.homeSlot !== undefined && a.homeSlot !== slot && <Badge size="xs" color="orange" variant="light" ml={4}>임시</Badge>}
+                      </Text>
+                      {!a.player.positionReview && <PosBadge pos={a.player.mainPosition} size="xs" />}
+                      {showSkill && !a.player.needsReview && <Text size="xs" c="dimmed" fw={700}>{skillText(a.player)}</Text>}
+                      <MoveMenu current={slot} home={a.homeSlot} teamName={teamName} onChange={(s) => setOverride(a.player.id, s === a.homeSlot ? null : s)} />
+                    </Group>
+                  </Paper>
                 ))}
-                {players.length === 0 && <li className="muted">참석자 없음</li>}
-              </ul>
-              {absentLeaders.length > 0 && (
-                <p className="muted small absent">불참: {absentLeaders.map((p) => p.name).join(', ')}</p>
-              )}
-            </article>
+                {players.length === 0 && <Text size="sm" c="dimmed">참석자 없음</Text>}
+              </Stack>
+              {absentLeaders.length > 0 && <Text size="xs" c="dimmed" mt={6}>불참: {absentLeaders.map((p) => p.name).join(', ')}</Text>}
+            </Card>
           )
         })}
-      </div>
-    </section>
+      </SimpleGrid>
+    </Stack>
   )
 }
 
-function AttendGroup({ title, color, players, checked, onToggle }: {
-  title: string; color: string; players: Player[]; checked: string[]; onToggle: (id: string) => void
-}) {
-  const n = players.filter((p) => checked.includes(p.id)).length
-  return (
-    <div className="attend-group" style={{ ['--team' as string]: color }}>
-      <h4>{title} <span className="muted">{n}/{players.length}</span></h4>
-      {players.map((p) => (
-        <label key={p.id} className={`attend-pill ${checked.includes(p.id) ? 'on' : ''}`}>
-          <input type="checkbox" checked={checked.includes(p.id)} onChange={() => onToggle(p.id)} />
-          {p.name}
-        </label>
-      ))}
-    </div>
-  )
-}
-
-function MoveSelect({ current, home, teamName, onChange }: {
-  current?: number; home?: number; teamName: (slot: number) => string; onChange: (slot: number) => void
+function MoveMenu({ current, home, label, teamName, onChange }: {
+  current?: number; home?: number; label?: string; teamName: (slot: number) => string; onChange: (slot: number) => void
 }) {
   return (
-    <select className="move" value="" aria-label="오늘 뛸 팀" onChange={(e) => onChange(Number(e.target.value))}>
-      <option value="" disabled>{current === undefined ? '팀 선택' : '오늘만 이동'}</option>
-      {[0, 1, 2].filter((s) => s !== current).map((s) => (
-        <option key={s} value={s}>→ {teamName(s)}{s === home ? ' (원래 팀)' : ''}</option>
-      ))}
-    </select>
+    <Menu position="bottom-end" shadow="md">
+      <Menu.Target>
+        {label
+          ? <Button size="compact-xs" variant="default">{label}</Button>
+          : <Button size="compact-xs" variant="subtle" color="gray" px={4} aria-label="오늘만 이동"><IconArrowsExchange size={14} /></Button>}
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Label>{current === undefined ? '오늘 뛸 팀' : '오늘만 이동'}</Menu.Label>
+        {[0, 1, 2].filter((s) => s !== current).map((s) => (
+          <Menu.Item key={s} onClick={() => onChange(s)}>→ {teamName(s)}{s === home ? ' (원래 팀)' : ''}</Menu.Item>
+        ))}
+      </Menu.Dropdown>
+    </Menu>
   )
 }
