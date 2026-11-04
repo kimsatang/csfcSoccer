@@ -10,6 +10,7 @@ import { LEADER_ROLE_LABEL } from '../features/invite/api'
 import { isSupabaseConfigured } from '../shared/api/supabase'
 import { DraftBoard } from '../widgets/DraftBoard'
 import { MatchDay } from '../widgets/MatchDay'
+import { AdminPanel } from '../widgets/AdminPanel'
 import { MemberManager } from '../widgets/MemberManager'
 import { TeamManager } from '../widgets/TeamManager'
 import { useAppStore } from './store'
@@ -92,7 +93,12 @@ function TeamMaker({ viewer }: { viewer: Viewer }) {
       <main>
         {error && <p className="warn">{error}</p>}
         {!loaded && <p className="muted">불러오는 중…</p>}
-        {loaded && step === 'members' && viewer.isAdmin && <MemberManager members={state.members} dispatch={dispatch} onReload={reload} />}
+        {loaded && step === 'members' && viewer.isAdmin && (
+          <>
+            {viewer.isSuper && <AdminPanel />}
+            <MemberManager members={state.members} dispatch={dispatch} onReload={reload} />
+          </>
+        )}
         {loaded && step === 'draft' && (bundle
           ? <DraftBoard members={state.members} bundle={bundle} showSkill={state.showSkill} onChanged={reloadSeason} isAdmin={viewer.isAdmin} myTeamIds={myTeamIds} />
           : noSeason)}
@@ -102,7 +108,7 @@ function TeamMaker({ viewer }: { viewer: Viewer }) {
           : noSeason)}
       </main>
       <footer className="foot muted small userbar">
-        <span>{viewer.email} ({[viewer.isAdmin && '운영진', myRoles].filter(Boolean).join(' · ')})</span>
+        <span>{viewer.email} ({[viewer.isSuper ? '슈퍼 관리자' : viewer.isAdmin && '운영진', myRoles].filter(Boolean).join(' · ')})</span>
         <button className="link" onClick={() => signOut()}>로그아웃</button>
       </footer>
     </div>

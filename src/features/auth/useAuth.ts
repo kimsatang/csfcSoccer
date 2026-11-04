@@ -7,6 +7,8 @@ import { fetchInviteInfo, fetchMyLeaderTeams, readInviteToken } from '../invite/
 export interface Viewer {
   email: string
   isAdmin: boolean
+  /** 슈퍼 관리자: 운영진 추가·삭제 가능 */
+  isSuper: boolean
   /** 팀장·부팀장으로 맡은 시즌 팀 */
   leaderTeams: { teamId: string; role: LeaderRole }[]
 }
@@ -28,12 +30,13 @@ async function resolveViewer(session: Session): Promise<AuthState> {
   }
   // admins 테이블은 운영진에게만 보이므로, 조회 결과가 있으면 운영진
   const [{ data: adminRows }, leaderTeams] = await Promise.all([
-    supabase.from('admins').select('email').limit(1),
+    supabase.from('admins').select('email,role'),
     fetchMyLeaderTeams().catch(() => []),
   ])
   const isAdmin = Boolean(adminRows?.length)
+  const isSuper = Boolean(adminRows?.some((a) => a.email === email.toLowerCase() && a.role === 'SUPER'))
   if (!isAdmin && leaderTeams.length === 0) return { status: 'forbidden', email }
-  return { status: 'ready', viewer: { email, isAdmin, leaderTeams } }
+  return { status: 'ready', viewer: { email, isAdmin, isSuper, leaderTeams } }
 }
 
 export function useAuth(): [AuthState, () => void] {
