@@ -13,7 +13,8 @@ describe('년생', () => {
     expect(ageGroupOf({ birthYear: 1974 }).key).toBe('70s')
     expect(ageGroupOf({ birthYear: 1984 }).key).toBe('80-84')
     expect(ageGroupOf({ birthYear: 1987 }).key).toBe('85-87')
-    expect(ageGroupOf({ birthYear: 2009 }).key).toBe('88+')
+    expect(ageGroupOf({ birthYear: 1990 }).key).toBe('88-90')
+    expect(ageGroupOf({ birthYear: 2009 }).key).toBe('91+')
     expect(ageGroupOf({}).key).toBe('unknown')
   })
   it('미입력 회원 실력은 -', () => {

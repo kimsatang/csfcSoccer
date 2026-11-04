@@ -8,14 +8,15 @@ export interface AgeGroup {
 }
 
 /**
- * 드래프트 나이대 그룹. 현재 명단 기준(지명 대상 46명) 9 / 12 / 16 / 9명으로 나뉘도록 설정.
+ * 드래프트 나이대 그룹. 현재 명단 기준(지명 대상 62명) 9 / 12 / 16 / 10 / 15명으로 나뉘도록 설정.
  * 인원 분포가 바뀌면 이 배열만 수정하면 된다.
  */
 export const AGE_GROUPS: AgeGroup[] = [
   { key: '70s', label: '70년대생', min: 0, max: 1979 },
   { key: '80-84', label: '80~84년생', min: 1980, max: 1984 },
   { key: '85-87', label: '85~87년생', min: 1985, max: 1987 },
-  { key: '88+', label: '88년생 이후', min: 1988, max: 9999 },
+  { key: '88-90', label: '88~90년생', min: 1988, max: 1990 },
+  { key: '91+', label: '91년생 이후', min: 1991, max: 9999 },
 ]
 
 export const UNKNOWN_AGE: AgeGroup = { key: 'unknown', label: '년생 미입력', min: -1, max: -1 }
