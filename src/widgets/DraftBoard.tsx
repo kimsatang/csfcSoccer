@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Player, Position } from '../entities/player'
 import { AGE_GROUPS, ATTENDANCE_LABEL, ATTENDANCE_LEVELS, POSITIONS, POSITION_LABEL, UNKNOWN_AGE, ageGroupOf, shortYear, skillText } from '../entities/player'
 import type { Roster, SeasonBundle } from '../entities/season'
@@ -13,12 +13,16 @@ interface Props {
   bundle: SeasonBundle
   showSkill: boolean
   onChanged: () => Promise<void>
+  /** 운영진: 순서 변경·되돌리기·완료 가능, 모든 차례 지명 가능 */
+  isAdmin: boolean
+  /** 팀장·부팀장으로 맡은 팀: 자기 팀 차례에만 지명 가능 */
+  myTeamIds: string[]
 }
 
 type PosFilter = 'ALL' | Position
 const ALL_AGE_GROUPS = [...AGE_GROUPS, UNKNOWN_AGE]
 
-export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
+export function DraftBoard({ members, bundle, showSkill, onChanged, isAdmin, myTeamIds }: Props) {
   const { season } = bundle
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -37,6 +41,15 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
   const available = useMemo(() => availablePlayers(members, bundle), [members, bundle])
   const teamRosters = rosters(members, bundle)
   const round = Math.floor((pickNo - 1) / 3) + 1
+  const myTurn = myTeamIds.includes(onClock.id)
+  const canPick = drafting && (isAdmin || myTurn)
+
+  // 여러 폰에서 동시에 진행하므로 지명 중에는 5초마다 새로 불러옴
+  useEffect(() => {
+    if (!drafting) return
+    const t = window.setInterval(() => { if (!document.hidden) void onChanged() }, 5000)
+    return () => window.clearInterval(t)
+  }, [drafting, onChanged])
   const upcoming = [1, 2, 3].map((k) => teamForPick(bundle, pickNo + k).name.replace(/팀$/, ''))
   const filtered = available
     .filter((p) => (pos === 'ALL' ? true : p.mainPosition === pos || p.subPosition === pos))
@@ -88,7 +101,7 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
         <div className="row gap-s wrap">
           <button className="btn ghost" onClick={() => run(async () => {})} disabled={busy}>새로고침</button>
           <button className="btn ghost" onClick={copy}>팀 명단 복사</button>
-          {drafting ? (
+          {!isAdmin ? null : drafting ? (
             <>
               <button className="btn" disabled={busy || pickNo === 1} onClick={() => confirmClick('undo', undo)}>
                 {armed === 'undo' ? '정말 취소?' : '지명 되돌리기'}
@@ -108,7 +121,7 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
       {toast && <p className="toast">{toast}</p>}
       {error && <p className="warn">{error}</p>}
 
-      {drafting && pickNo === 1 && (
+      {isAdmin && drafting && pickNo === 1 && (
         <div className="order-box">
           <span className="muted small">1라운드 지명 순서 (이후 스네이크: 1→2→3→3→2→1…)</span>
           <div className="order-chips">
@@ -131,7 +144,10 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
             <strong>{onClock.name}</strong>
             <span className="muted small">{round}라운드 · 전체 {pickNo}번째 지명</span>
           </div>
-          <span className="muted small">다음: {upcoming.join(' → ')}</span>
+          <span className="muted small">
+            {myTurn ? <b className="my-turn">우리 팀 차례입니다! 아래에서 지명하세요.</b> : !isAdmin && '다른 팀 차례 · 자동 새로고침 중'}
+            {' '}다음: {upcoming.join(' → ')}
+          </span>
         </div>
       )}
 
@@ -202,7 +218,7 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
                   <button
                     className="btn pick-btn"
                     style={{ ['--team' as string]: TEAM_COLORS[onClock.slot].hex }}
-                    disabled={busy}
+                    disabled={busy || !canPick}
                     onClick={() => pick(p)}
                   >
                     지명

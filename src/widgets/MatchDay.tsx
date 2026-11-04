@@ -8,6 +8,7 @@ import { matchDates, nextMatchDate, rosters, shortDate } from '../entities/seaso
 import { TEAM_COLORS } from '../features/build-teams'
 import type { MatchPlayerInput } from '../features/build-teams/saveMatch'
 import { saveMatch } from '../features/build-teams/saveMatch'
+import { fetchDayAttendeesAllTeams } from '../entities/team/api'
 
 interface Props {
   members: Player[]
@@ -123,6 +124,15 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
         <div className="row gap-s wrap attend-actions">
           <button className="btn ghost" onClick={() => dispatch({ type: 'day/setAttendance', date, ids: active.map((m) => m.id) })}>전체 참석</button>
           <button className="btn ghost" onClick={() => dispatch({ type: 'day/setAttendance', date, ids: [] })}>전체 해제</button>
+          <button
+            className="btn ghost"
+            title="팀 관리 화면에서 팀장·부팀장이 체크한 참석자를 불러옵니다"
+            onClick={() => fetchDayAttendeesAllTeams(date)
+              .then((ids) => { dispatch({ type: 'day/setAttendance', date, ids }); setToast(`팀장 입력 참석자 ${ids.length}명을 불러왔습니다.`); setTimeout(() => setToast(''), 2500) })
+              .catch((e) => setToast((e as Error).message))}
+          >
+            팀장 입력 불러오기
+          </button>
         </div>
         <div className="attend-groups">
           {teamRosters.map((r) => (
