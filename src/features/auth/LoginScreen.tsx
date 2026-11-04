@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react'
-import { Alert, Anchor, Button, Paper, PinInput, Stack, Text, TextInput, Title } from '@mantine/core'
+import { Alert, Anchor, Button, Paper, Stack, Text, TextInput, Title } from '@mantine/core'
 import { IconAlertTriangle, IconMail, IconMailCheck } from '@tabler/icons-react'
 import type { InviteInfo } from '../invite/api'
 import { LEADER_ROLE_LABEL, fetchInviteInfo, readInviteToken } from '../invite/api'
+import { linkError } from '../../shared/api/supabase'
 import { AuthLayout } from './AuthLayout'
 import { sendMagicLink, signOut, verifyEmailCode } from './useAuth'
 
-const CODE_LENGTH = 6
+/** Supabase 프로젝트 설정(Email OTP Length)에 따라 6~10자리 */
+const CODE_MIN = 6
+const CODE_MAX = 10
 
 export function LoginScreen({ forbiddenEmail }: { forbiddenEmail?: string }) {
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(linkError ?? '')
   const [busy, setBusy] = useState(false)
   const [code, setCode] = useState('')
   const [token] = useState(readInviteToken)
@@ -46,7 +49,7 @@ export function LoginScreen({ forbiddenEmail }: { forbiddenEmail?: string }) {
   }
 
   const verify = async (value = code) => {
-    if (value.length < CODE_LENGTH) return
+    if (value.length < CODE_MIN) return
     setBusy(true); setError('')
     // 성공하면 onAuthStateChange가 화면을 바꾼다 (초대 토큰은 주소에 남아 있어 등록 확인으로 이어짐)
     try { await verifyEmailCode(email, value) }
@@ -87,15 +90,22 @@ export function LoginScreen({ forbiddenEmail }: { forbiddenEmail?: string }) {
       ) : (
         <Stack gap="md">
           <Alert color="brand" icon={<IconMailCheck size={18} />} variant="light">
-            <b>{email}</b>로 메일을 보냈어요. 메일의 <b>인증번호 {CODE_LENGTH}자리</b>를 입력하세요. (스팸함도 확인)
+            <b>{email}</b>로 메일을 보냈어요. 메일의 <b>인증번호(숫자 전체)</b>를 입력하세요. (스팸함도 확인)
           </Alert>
-          <PinInput
-            className="otp-input" length={CODE_LENGTH} type="number" oneTimeCode size="lg" value={code} autoFocus
-            onChange={setCode} onComplete={(v) => void verify(v)} disabled={busy} style={{ justifyContent: 'center' }}
-          />
-          <Button size="md" fullWidth loading={busy} disabled={code.length < CODE_LENGTH} onClick={() => void verify()}>로그인</Button>
+          <form onSubmit={(e) => { e.preventDefault(); void verify() }}>
+            <Stack gap="sm">
+              <TextInput
+                size="lg" label="인증번호" placeholder="숫자만 입력" autoFocus
+                inputMode="numeric" autoComplete="one-time-code" maxLength={CODE_MAX}
+                value={code} onChange={(e) => setCode(e.currentTarget.value.replace(/\D/g, '').slice(0, CODE_MAX))}
+                disabled={busy}
+                styles={{ input: { textAlign: 'center', letterSpacing: '0.3em', fontWeight: 700, fontSize: 24 } }}
+              />
+              <Button type="submit" size="md" fullWidth loading={busy} disabled={code.length < CODE_MIN}>로그인</Button>
+            </Stack>
+          </form>
           <Text size="xs" c="dimmed" ta="center">
-            메일의 링크를 눌러도 로그인돼요 ·{' '}
+            링크를 누르면 다른 앱 브라우저에서 열릴 수 있어요. 이 화면에 번호를 입력하는 걸 권장해요.<br />
             <Anchor size="xs" onClick={() => { setSent(false); setCode(''); setError('') }}>이메일 다시 입력</Anchor>{' · '}
             <Anchor size="xs" onClick={() => void send()}>재전송</Anchor>
           </Text>

@@ -83,10 +83,10 @@ export async function sendMagicLink(email: string, inviteToken?: string | null):
 export async function verifyEmailCode(email: string, code: string): Promise<void> {
   const { error } = await supabase.auth.verifyOtp({
     email: email.trim().toLowerCase(),
-    token: code.replace(/\s/g, ''),
+    token: code.replace(/\D/g, ''),
     type: 'email',
   })
-  if (error) throw new Error(/expired|invalid/i.test(error.message) ? '인증번호가 틀렸거나 만료되었습니다. 다시 받아 주세요.' : error.message)
+  if (error) throw new Error(/expired|invalid/i.test(error.message) ? '인증번호가 틀렸거나 만료되었습니다. 메일의 링크를 이미 눌렀다면 그 번호는 사용할 수 없어요. 재전송 후 가장 최근 메일의 번호를 입력해 주세요.' : error.message)
 }
 
 export async function signOut(): Promise<void> {
