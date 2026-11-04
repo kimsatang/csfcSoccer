@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchMembers } from '../entities/player/api'
+import type { SeasonBundle } from '../entities/season'
+import { fetchCurrentSeason } from '../entities/season/api'
 import { LoginScreen } from '../features/auth/LoginScreen'
 import { signOut, useAuth } from '../features/auth/useAuth'
-import { buildTeams } from '../features/build-teams'
 import { isSupabaseConfigured } from '../shared/api/supabase'
-import { MatchSetup } from '../widgets/MatchSetup'
+import { DraftBoard } from '../widgets/DraftBoard'
+import { MatchDay } from '../widgets/MatchDay'
 import { MemberManager } from '../widgets/MemberManager'
-import { TeamBoard } from '../widgets/TeamBoard'
 import { useAppStore } from './store'
 
-type Step = 'members' | 'setup' | 'teams'
+type Step = 'members' | 'draft' | 'match'
 
 const STEPS: { key: Step; label: string }[] = [
   { key: 'members', label: '① 회원 관리' },
-  { key: 'setup', label: '② 참석·역할' },
-  { key: 'teams', label: '③ 팀 편성' },
+  { key: 'draft', label: '② 드래프트' },
+  { key: 'match', label: '③ 경기 당일' },
 ]
 
 export default function App() {
@@ -31,18 +32,24 @@ export default function App() {
 
 function TeamMaker({ email }: { email: string }) {
   const [state, dispatch] = useAppStore()
-  const [step, setStep] = useState<Step>(state.teams ? 'teams' : 'setup')
+  const [bundle, setBundle] = useState<SeasonBundle | null>(null)
+  const [step, setStep] = useState<Step>('draft')
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
 
+  const reloadSeason = useCallback(async () => {
+    setBundle(await fetchCurrentSeason())
+  }, [])
+
   const reload = useCallback(async () => {
     try {
-      const players = await fetchMembers()
+      const [players, season] = await Promise.all([fetchMembers(), fetchCurrentSeason()])
       dispatch({ type: 'member/set', players })
-      if (!players.length) setStep('members')
+      setBundle(season)
+      if (season?.season.status === 'ACTIVE') setStep('match')
       setError(null)
     } catch (e) {
-      setError(`회원 목록을 불러오지 못했습니다: ${(e as Error).message}`)
+      setError(`데이터를 불러오지 못했습니다: ${(e as Error).message}`)
     } finally {
       setLoaded(true)
     }
@@ -50,19 +57,7 @@ function TeamMaker({ email }: { email: string }) {
 
   useEffect(() => { void reload() }, [reload])
 
-  const build = () => {
-    const attendees = state.members.filter((m) => m.status === 'ACTIVE' && state.attendance.includes(m.id))
-    const captainIds = attendees.filter((m) => state.roles[m.id] === 'CAPTAIN').map((m) => m.id)
-    const viceIds = attendees.filter((m) => state.roles[m.id] === 'VICE').map((m) => m.id)
-    try {
-      const { teams } = buildTeams({ attendees, captainIds, viceIds })
-      dispatch({ type: 'teams/set', teams })
-      setError(null)
-      setStep('teams')
-    } catch (e) {
-      setError((e as Error).message)
-    }
-  }
+  const noSeason = <p className="panel muted">진행 중인 시즌이 없습니다. (Supabase seasons 테이블에 시즌을 추가하세요)</p>
 
   return (
     <div className="app">
@@ -70,12 +65,7 @@ function TeamMaker({ email }: { email: string }) {
         <h1><span className="logo">CSFC</span> 팀짜기</h1>
         <nav className="steps">
           {STEPS.map((s) => (
-            <button
-              key={s.key}
-              className={`step ${step === s.key ? 'active' : ''}`}
-              disabled={s.key === 'teams' && !state.teams}
-              onClick={() => setStep(s.key)}
-            >
+            <button key={s.key} className={`step ${step === s.key ? 'active' : ''}`} onClick={() => setStep(s.key)}>
               {s.label}
             </button>
           ))}
@@ -84,21 +74,14 @@ function TeamMaker({ email }: { email: string }) {
 
       <main>
         {error && <p className="warn">{error}</p>}
-        {!loaded && <p className="muted">회원 목록 불러오는 중…</p>}
+        {!loaded && <p className="muted">불러오는 중…</p>}
         {loaded && step === 'members' && <MemberManager members={state.members} dispatch={dispatch} onReload={reload} />}
-        {loaded && step === 'setup' && (
-          <MatchSetup members={state.members} attendance={state.attendance} roles={state.roles} dispatch={dispatch} onBuild={build} />
-        )}
-        {loaded && step === 'teams' && state.teams && (
-          <TeamBoard
-            teams={state.teams}
-            title={state.matchTitle}
-            showSkill={state.showSkill}
-            dispatch={dispatch}
-            onReshuffle={build}
-            onBack={() => setStep('setup')}
-          />
-        )}
+        {loaded && step === 'draft' && (bundle
+          ? <DraftBoard members={state.members} bundle={bundle} showSkill={state.showSkill} onChanged={reloadSeason} />
+          : noSeason)}
+        {loaded && step === 'match' && (bundle
+          ? <MatchDay members={state.members} bundle={bundle} days={state.days} showSkill={state.showSkill} dispatch={dispatch} />
+          : noSeason)}
       </main>
       <footer className="foot muted small userbar">
         <span>{email} (운영진)</span>

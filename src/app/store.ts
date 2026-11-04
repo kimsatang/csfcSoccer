@@ -1,104 +1,84 @@
 import { useEffect, useReducer } from 'react'
-import type { MatchRole, Player } from '../entities/player'
-import type { Team } from '../features/build-teams'
+import type { Player } from '../entities/player'
 import { loadJson, saveJson } from '../shared/lib/storage'
 
-// 회원은 Supabase에 저장, 그 외(당일 참석·역할·편성 초안)는 기기별 localStorage
-const STORAGE_KEY = 'csfc-team-maker:v2'
+// 회원·시즌·드래프트는 Supabase, 경기 당일 참석 체크·임시 이동은 기기별 localStorage(날짜별)
+const STORAGE_KEY = 'csfc-team-maker:v3'
+
+export interface DayDraft {
+  attendance: string[]
+  /** 그날만 다른 팀으로 뛰는 회원: memberId → slot */
+  overrides: Record<string, number>
+  title?: string
+}
 
 export interface AppState {
   members: Player[]
-  /** 오늘 참석자 id */
-  attendance: string[]
-  /** 오늘 역할 (팀장/부주장) */
-  roles: Record<string, MatchRole>
-  matchTitle: string
-  teams: Team[] | null
+  days: Record<string, DayDraft>
   showSkill: boolean
 }
 
 export type Action =
-  | { type: 'member/add'; player: Player }
   | { type: 'member/update'; player: Player }
   | { type: 'member/remove'; id: string }
   | { type: 'member/set'; players: Player[] }
   | { type: 'member/append'; players: Player[] }
-  | { type: 'attend/toggle'; id: string }
-  | { type: 'attend/set'; ids: string[] }
-  | { type: 'role/set'; id: string; role: MatchRole }
-  | { type: 'role/reset' }
-  | { type: 'match/title'; title: string }
-  | { type: 'teams/set'; teams: Team[] | null }
+  | { type: 'day/toggle'; date: string; id: string }
+  | { type: 'day/setAttendance'; date: string; ids: string[] }
+  | { type: 'day/override'; date: string; id: string; slot: number | null }
+  | { type: 'day/title'; date: string; title: string }
   | { type: 'ui/showSkill'; value: boolean }
 
-function defaultTitle(): string {
-  const d = new Date()
-  const days = ['일', '월', '화', '수', '목', '금', '토']
-  return `CSFC ${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]}) 팀 편성`
-}
+const emptyDay = (): DayDraft => ({ attendance: [], overrides: {} })
 
-const initial: AppState = {
-  members: [],
-  attendance: [],
-  roles: {},
-  matchTitle: defaultTitle(),
-  teams: null,
-  showSkill: true,
-}
-
-function withoutId(state: AppState, id: string): Pick<AppState, 'attendance' | 'roles'> {
-  const roles = { ...state.roles }
-  delete roles[id]
-  return { attendance: state.attendance.filter((x) => x !== id), roles }
+function patchDay(state: AppState, date: string, fn: (d: DayDraft) => DayDraft): AppState {
+  return { ...state, days: { ...state.days, [date]: fn(state.days[date] ?? emptyDay()) } }
 }
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'member/add':
-      return { ...state, members: [...state.members, action.player] }
-    case 'member/update': {
-      const members = state.members.map((m) => (m.id === action.player.id ? action.player : m))
-      // 휴면 처리 시 오늘 참석에서도 제외
-      const extra = action.player.status === 'INACTIVE' ? withoutId(state, action.player.id) : {}
-      return { ...state, members, ...extra }
-    }
+    case 'member/update':
+      return { ...state, members: state.members.map((m) => (m.id === action.player.id ? action.player : m)) }
     case 'member/remove':
-      return { ...state, members: state.members.filter((m) => m.id !== action.id), ...withoutId(state, action.id), teams: null }
-    case 'member/set': {
-      // DB에서 다시 불러온 경우: 사라진 회원은 참석·역할에서 제거
+      return { ...state, members: state.members.filter((m) => m.id !== action.id) }
+    case 'member/set':
+      return { ...state, members: action.players }
+    case 'member/append': {
       const ids = new Set(action.players.map((p) => p.id))
-      const roles = Object.fromEntries(Object.entries(state.roles).filter(([id]) => ids.has(id)))
-      return { ...state, members: action.players, attendance: state.attendance.filter((id) => ids.has(id)), roles }
+      return { ...state, members: [...state.members.filter((m) => !ids.has(m.id)), ...action.players] }
     }
-    case 'member/append':
-      return { ...state, members: [...state.members, ...action.players] }
-    case 'attend/toggle':
-      return state.attendance.includes(action.id)
-        ? { ...state, ...withoutId(state, action.id) }
-        : { ...state, attendance: [...state.attendance, action.id] }
-    case 'attend/set': {
-      const roles = Object.fromEntries(Object.entries(state.roles).filter(([id]) => action.ids.includes(id)))
-      return { ...state, attendance: action.ids, roles }
-    }
-    case 'role/set':
-      return { ...state, roles: { ...state.roles, [action.id]: action.role } }
-    case 'role/reset':
-      return { ...state, roles: {} }
-    case 'match/title':
-      return { ...state, matchTitle: action.title }
-    case 'teams/set':
-      return { ...state, teams: action.teams }
+    case 'day/toggle':
+      return patchDay(state, action.date, (d) => {
+        if (!d.attendance.includes(action.id)) return { ...d, attendance: [...d.attendance, action.id] }
+        const overrides = { ...d.overrides }
+        delete overrides[action.id]
+        return { ...d, attendance: d.attendance.filter((x) => x !== action.id), overrides }
+      })
+    case 'day/setAttendance':
+      return patchDay(state, action.date, (d) => ({ ...d, attendance: action.ids }))
+    case 'day/override':
+      return patchDay(state, action.date, (d) => {
+        const overrides = { ...d.overrides }
+        if (action.slot === null) delete overrides[action.id]
+        else overrides[action.id] = action.slot
+        return { ...d, overrides }
+      })
+    case 'day/title':
+      return patchDay(state, action.date, (d) => ({ ...d, title: action.title }))
     case 'ui/showSkill':
       return { ...state, showSkill: action.value }
   }
 }
 
 export function useAppStore() {
-  const [state, dispatch] = useReducer(reducer, undefined, () => ({ ...initial, ...loadJson<Partial<AppState>>(STORAGE_KEY, {}), members: [] }))
+  const [state, dispatch] = useReducer(reducer, undefined, () => ({
+    days: {},
+    showSkill: true,
+    ...loadJson<Partial<AppState>>(STORAGE_KEY, {}),
+    members: [],
+  }))
   useEffect(() => {
-    const { members: _members, ...draft } = state
-    void _members
-    saveJson(STORAGE_KEY, draft)
-  }, [state])
+    saveJson(STORAGE_KEY, { days: state.days, showSkill: state.showSkill })
+  }, [state.days, state.showSkill])
   return [state, dispatch] as const
 }

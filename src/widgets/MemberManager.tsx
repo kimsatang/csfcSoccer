@@ -6,7 +6,7 @@ import {
   CSV_TEMPLATE, POSITIONS, POSITION_LABEL, SAMPLE_MEMBERS, SKILL_MAX, SKILL_MIN,
   clampSkill, membersToCsv, parseMembersCsv,
 } from '../entities/player'
-import { deleteMember, insertMembers, updateMember } from '../entities/player/api'
+import { deleteMember, insertMembers, updateMember, upsertMembersByName } from '../entities/player/api'
 
 interface Props {
   members: Player[]
@@ -70,8 +70,13 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
 
   const importCsv = () => run(async () => {
     const { players, errors } = parseMembersCsv(csvText)
-    if (players.length) dispatch({ type: 'member/append', players: await insertMembers(players.map(stripId)) })
-    setCsvMsg([`${players.length}명 등록`, ...errors])
+    let summary = '0명 등록'
+    if (players.length) {
+      const { inserted, updated } = await upsertMembersByName(players.map(stripId), members)
+      dispatch({ type: 'member/append', players: [...updated, ...inserted] })
+      summary = `신규 ${inserted.length}명 등록 · 기존 ${updated.length}명 갱신`
+    }
+    setCsvMsg([summary, ...errors])
     if (!errors.length) { setCsvText(''); setCsvOpen(false) }
   })
 
@@ -112,7 +117,7 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
 
       {csvOpen && (
         <div className="csv-box">
-          <p className="muted small">엑셀에서 복사해 붙여넣거나 CSV를 입력하세요. 필수 컬럼: <b>이름, 주포지션, 실력</b> · 기존 회원에 추가됩니다.</p>
+          <p className="muted small">엑셀에서 복사해 붙여넣거나 CSV를 입력하세요. 필수 컬럼: <b>이름, 주포지션, 실력</b> · 같은 이름이 있으면 정보를 갱신하고, 없으면 새로 추가합니다.</p>
           <textarea rows={6} value={csvText} placeholder={CSV_TEMPLATE} onChange={(e) => setCsvText(e.target.value)} />
           <div className="row gap-s">
             <button className="btn" onClick={importCsv} disabled={!csvText.trim() || busy}>등록</button>

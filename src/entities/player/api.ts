@@ -62,3 +62,20 @@ export async function deleteMember(id: string): Promise<void> {
   const { error } = await supabase.from('members').delete().eq('id', id)
   if (error) throw error
 }
+
+/**
+ * CSV 일괄 등록: 같은 이름의 회원이 이미 있으면 정보를 갱신, 없으면 새로 등록.
+ * (팀장·부팀장처럼 임시값으로 먼저 등록된 회원을 명단으로 덮어쓰기 위함)
+ */
+export async function upsertMembersByName(
+  incoming: Omit<Player, 'id'>[],
+  existing: Player[],
+): Promise<{ inserted: Player[]; updated: Player[] }> {
+  const byName = new Map(existing.map((m) => [m.name, m]))
+  const toUpdate = incoming.filter((p) => byName.has(p.name))
+  const toInsert = incoming.filter((p) => !byName.has(p.name))
+  const updated: Player[] = []
+  for (const p of toUpdate) updated.push(await updateMember({ ...p, id: byName.get(p.name)!.id }))
+  const inserted = toInsert.length ? await insertMembers(toInsert) : []
+  return { inserted, updated }
+}
