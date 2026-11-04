@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Player, Position } from '../entities/player'
-import { POSITIONS, POSITION_LABEL } from '../entities/player'
+import { AGE_GROUPS, POSITIONS, POSITION_LABEL, UNKNOWN_AGE, ageGroupOf, shortYear, skillText } from '../entities/player'
 import type { Roster, SeasonBundle } from '../entities/season'
 import { availablePlayers, matchDates, nextPickNo, orderedTeams, rosters, shortDate, teamForPick } from '../entities/season'
 import { finishDraft, makePick, reopenDraft, setDraftOrder, undoLastPick } from '../entities/season/api'
@@ -15,6 +15,7 @@ interface Props {
 }
 
 type PosFilter = 'ALL' | Position
+const ALL_AGE_GROUPS = [...AGE_GROUPS, UNKNOWN_AGE]
 
 export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
   const { season } = bundle
@@ -23,6 +24,8 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
   const [toast, setToast] = useState('')
   const [query, setQuery] = useState('')
   const [pos, setPos] = useState<PosFilter>('ALL')
+  const [age, setAge] = useState<string>('ALL')
+  const [grouped, setGrouped] = useState(true)
   const [armed, setArmed] = useState<string | null>(null)
 
   const drafting = season.status === 'DRAFTING'
@@ -35,8 +38,13 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
   const upcoming = [1, 2, 3].map((k) => teamForPick(bundle, pickNo + k).name.replace(/팀$/, ''))
   const filtered = available
     .filter((p) => (pos === 'ALL' ? true : p.mainPosition === pos || p.subPosition === pos))
+    .filter((p) => (age === 'ALL' ? true : ageGroupOf(p).key === age))
     .filter((p) => p.name.includes(query.trim()))
-    .sort((a, b) => (showSkill ? b.skill - a.skill : 0) || a.name.localeCompare(b.name))
+    .sort((a, b) => (a.birthYear ?? 9999) - (b.birthYear ?? 9999) || a.name.localeCompare(b.name))
+  const ageCounts = Object.fromEntries(ALL_AGE_GROUPS.map((g) => [g.key, available.filter((p) => ageGroupOf(p).key === g.key).length]))
+  const sections = grouped
+    ? ALL_AGE_GROUPS.map((g) => ({ group: g, players: filtered.filter((p) => ageGroupOf(p).key === g.key) })).filter((x) => x.players.length)
+    : [{ group: null, players: filtered }]
 
   const run = async (job: () => Promise<void>, done?: string) => {
     setBusy(true); setError('')
@@ -145,18 +153,35 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
               <input className="search" placeholder="이름 검색" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
           </div>
-          {available.length === 0 ? (
+          <div className="row gap-s wrap age-bar">
+            <div className="seg">
+              <button className={`seg-btn ${age === 'ALL' ? 'sel' : ''}`} onClick={() => setAge('ALL')}>전 연령</button>
+              {ALL_AGE_GROUPS.filter((g) => ageCounts[g.key] > 0 || g !== UNKNOWN_AGE).map((g) => (
+                <button key={g.key} className={`seg-btn ${age === g.key ? 'sel' : ''}`} onClick={() => setAge(g.key)}>
+                  {g.label} <span className="muted">{ageCounts[g.key]}</span>
+                </button>
+              ))}
+            </div>
+            <label className="toggle"><input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} /> 나이대별로 묶기</label>
+          </div>
+          {filtered.length === 0 && available.length > 0 ? (
+            <p className="muted empty">조건에 맞는 회원이 없습니다.</p>
+          ) : available.length === 0 ? (
             <p className="muted empty">
               {members.length <= 6 ? '회원 명단을 먼저 등록하세요 (① 회원 관리 → CSV 불러오기).' : '모든 회원이 지명되었습니다. "드래프트 완료"를 눌러 팀을 확정하세요.'}
             </p>
           ) : (
+            sections.map(({ group, players }) => (
+            <div key={group?.key ?? 'all'} className="pool-section">
+            {group && <h4 className="pool-group">{group.label} <span className="muted">{players.length}명</span></h4>}
             <ul className="pool-list">
-              {filtered.map((p) => (
+              {players.map((p) => (
                 <li key={p.id}>
+                  <span className="year">{shortYear(p.birthYear)}</span>
                   <span className="name">{p.name}</span>
-                  <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>
-                  {p.subPosition && <span className={`pos pos-${p.subPosition} light`}>{POSITION_LABEL[p.subPosition]}</span>}
-                  {showSkill && <span className="skill-num">{p.skill}</span>}
+                  {!p.needsReview && <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>}
+                  {!p.needsReview && p.subPosition && <span className={`pos pos-${p.subPosition} light`}>{POSITION_LABEL[p.subPosition]}</span>}
+                  {showSkill && <span className="skill-num">{skillText(p)}</span>}
                   <button
                     className="btn pick-btn"
                     style={{ ['--team' as string]: TEAM_COLORS[onClock.slot].hex }}
@@ -168,6 +193,8 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
                 </li>
               ))}
             </ul>
+            </div>
+            ))
           )}
         </div>
       )}
@@ -178,17 +205,26 @@ export function DraftBoard({ members, bundle, showSkill, onChanged }: Props) {
 function RosterCard({ roster, showSkill, active }: { roster: Roster; showSkill: boolean; active: boolean }) {
   const { team, captain, vice, picks } = roster
   const players = [captain, vice, ...picks.map((p) => p.player)].filter(Boolean) as Player[]
-  const avg = players.length ? players.reduce((s, p) => s + p.skill, 0) / players.length : 0
-  const posCount = (p: Position) => players.filter((x) => x.mainPosition === p).length
+  const rated = players.filter((p) => !p.needsReview)
+  const avg = rated.length ? rated.reduce((s, p) => s + p.skill, 0) / rated.length : 0
+  const posCount = (p: Position) => rated.filter((x) => x.mainPosition === p).length
   return (
     <article className={`team ${active ? 'team-active' : ''}`} style={{ ['--team' as string]: TEAM_COLORS[team.slot].hex }}>
       <header className="team-head">
         <h3>{team.name}</h3>
-        <span className="team-meta">{players.length}명{showSkill && players.length > 0 && <> · 평균 {avg.toFixed(1)}</>}</span>
+        <span className="team-meta">{players.length}명{showSkill && rated.length > 0 && <> · 평균 {avg.toFixed(1)}</>}</span>
       </header>
       <div className="pos-summary">
-        {POSITIONS.map((p) => <span key={p} className={`pos pos-${p} light`}>{POSITION_LABEL[p]} {posCount(p)}</span>)}
+        {ALL_AGE_GROUPS.map((g) => {
+          const n = players.filter((p) => ageGroupOf(p).key === g.key).length
+          return n > 0 || g !== UNKNOWN_AGE ? <span key={g.key} className="age-chip">{g.label.replace('년생', '').replace(' 이후', '+')} {n}</span> : null
+        })}
       </div>
+      {rated.length > 0 && (
+        <div className="pos-summary">
+          {POSITIONS.map((p) => <span key={p} className={`pos pos-${p} light`}>{POSITION_LABEL[p]} {posCount(p)}</span>)}
+        </div>
+      )}
       <ul className="roster">
         {captain && <Row p={captain} badge="팀장" showSkill={showSkill} />}
         {vice && <Row p={vice} badge="부팀장" showSkill={showSkill} />}
@@ -202,9 +238,9 @@ function Row({ p, badge, pickNo, showSkill }: { p: Player; badge?: string; pickN
   return (
     <li className={badge ? 'leader' : ''}>
       {badge ? <span className={`badge ${badge === '팀장' ? 'cap' : 'vice'}`}>{badge}</span> : <span className="pick-no">#{pickNo}</span>}
-      <span className="name">{p.name}</span>
-      <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>
-      {showSkill && <span className="skill-num">{p.skill}</span>}
+      <span className="name">{p.name} <span className="year">{shortYear(p.birthYear)}</span></span>
+      {!p.needsReview && <span className={`pos pos-${p.mainPosition}`}>{POSITION_LABEL[p.mainPosition]}</span>}
+      {showSkill && <span className="skill-num">{skillText(p)}</span>}
     </li>
   )
 }
@@ -213,7 +249,7 @@ function draftText(seasonName: string, dates: string[], rs: Roster[]): string {
   const blocks = rs.map((r) => [
     `[${r.team.name}] ${2 + r.picks.length}명`,
     `팀장 ${r.captain?.name ?? '-'} / 부팀장 ${r.vice?.name ?? '-'}`,
-    ...r.picks.map(({ player }, i) => `${i + 1}. ${player.name} (${POSITION_LABEL[player.mainPosition]})`),
+    ...r.picks.map(({ player }, i) => `${i + 1}. ${player.name} (${shortYear(player.birthYear)}${player.needsReview ? '' : ` · ${POSITION_LABEL[player.mainPosition]}`})`),
   ].join('\n'))
   return [`⚽ CSFC ${seasonName} 팀 명단`, `경기: ${dates.map(shortDate).join(', ')}`, ...blocks].join('\n\n')
 }

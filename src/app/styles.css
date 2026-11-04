@@ -187,6 +187,14 @@ input[type="range"] { accent-color: var(--brand); padding: 0; }
 .temp { font-size: 11px; color: #a06a00; font-weight: 700; }
 .absent { margin-top: 8px; }
 
+.review-chip { display: inline-block; font-size: 12px; font-weight: 700; color: #a06a00; background: #fdf3dc; border-radius: 4px; padding: 1px 6px; }
+.year { font-size: 12px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pool-list .year { width: 20px; }
+.age-bar { margin-bottom: 10px; }
+.age-chip { font-size: 12px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: #eef2ed; color: #44514a; }
+.pool-section + .pool-section { margin-top: 12px; }
+.pool-group { margin: 0 0 6px; font-size: 14px; }
+
 .foot { justify-content: center; margin-top: 24px; }
 
 @media (max-width: 860px) {

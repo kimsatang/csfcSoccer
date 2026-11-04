@@ -1,5 +1,6 @@
 import type { MemberStatus, Player, Position } from './model'
 import { clampSkill, newPlayerId } from './model'
+import { parseBirthYear } from './age'
 
 const POSITION_ALIASES: Record<string, Position> = {
   gk: 'GK', 골키퍼: 'GK', 키퍼: 'GK', 골: 'GK',
@@ -21,6 +22,7 @@ const HEADER_ALIASES: Record<string, keyof Player> = {
   실력: 'skill', 능력치: 'skill', skill: 'skill', 레벨: 'skill',
   상태: 'status', status: 'status',
   메모: 'memo', memo: 'memo', 비고: 'memo',
+  년생: 'birthYear', 생년: 'birthYear', 출생년도: 'birthYear', birthyear: 'birthYear',
 }
 
 export interface CsvParseResult {
@@ -68,15 +70,16 @@ export function parseMembersCsv(text: string): CsvParseResult {
       backNumber: backNumber !== undefined && !Number.isNaN(backNumber) ? backNumber : undefined,
       status,
       memo: row.memo || undefined,
+      birthYear: parseBirthYear(row.birthYear),
     })
   })
   return { players, errors }
 }
 
 export function membersToCsv(players: Player[]): string {
-  const header = '이름,등번호,주포지션,부포지션,실력,상태,메모'
+  const header = '이름,년생,등번호,주포지션,부포지션,실력,상태,메모'
   const rows = players.map((p) =>
-    [p.name, p.backNumber ?? '', p.mainPosition, p.subPosition ?? '', p.skill, p.status === 'ACTIVE' ? '활동' : '휴면', (p.memo ?? '').replace(/,/g, ' ')].join(','),
+    [p.name, p.birthYear ?? '', p.backNumber ?? '', p.mainPosition, p.subPosition ?? '', p.skill, p.status === 'ACTIVE' ? '활동' : '휴면', (p.memo ?? '').replace(/,/g, ' ')].join(','),
   )
   return [header, ...rows].join('\n')
 }

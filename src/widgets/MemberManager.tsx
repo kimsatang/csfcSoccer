@@ -4,7 +4,7 @@ import type { Action } from '../app/store'
 import type { Player, Position } from '../entities/player'
 import {
   CSV_TEMPLATE, POSITIONS, POSITION_LABEL, SAMPLE_MEMBERS, SKILL_MAX, SKILL_MIN,
-  clampSkill, membersToCsv, parseMembersCsv,
+  clampSkill, membersToCsv, parseBirthYear, parseMembersCsv, shortYear,
 } from '../entities/player'
 import { deleteMember, insertMembers, updateMember, upsertMembersByName } from '../entities/player/api'
 
@@ -20,7 +20,10 @@ const emptyDraft = (): Draft => ({ name: '', mainPosition: 'MF', skill: 5, statu
 const stripId = ({ id: _id, ...rest }: Player): Omit<Player, 'id'> => { void _id; return rest }
 
 export function MemberManager({ members, dispatch, onReload }: Props) {
-  const [draft, setDraft] = useState<Draft>(emptyDraft)
+  const [draft, setDraftState] = useState<Draft>(emptyDraft)
+  const [yearText, setYearText] = useState('')
+  /** 폼 내용 교체(수정 시작·초기화) 시 년생 입력칸도 함께 맞춤 */
+  const setDraft = (d: Draft) => { setDraftState(d); setYearText(d.birthYear ? shortYear(d.birthYear) : '') }
   const [csvOpen, setCsvOpen] = useState(false)
   const [csvText, setCsvText] = useState('')
   const [csvMsg, setCsvMsg] = useState<string[]>([])
@@ -46,7 +49,8 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
 
   const save = () => run(async () => {
     if (!draft.name.trim()) return
-    const body = { ...draft, name: draft.name.trim(), skill: clampSkill(draft.skill) }
+    // 폼으로 저장하면 운영진이 확인한 것으로 보고 '미입력' 표시를 해제
+    const body = { ...draft, name: draft.name.trim(), skill: clampSkill(draft.skill), needsReview: false }
     if (draft.id) {
       dispatch({ type: 'member/update', player: await updateMember({ ...body, id: draft.id }) })
       flash(`${body.name} 수정됨`)
@@ -92,13 +96,16 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
 
   const filtered = members.filter((m) => m.name.includes(query.trim()))
   const activeCount = members.filter((m) => m.status === 'ACTIVE').length
+  const reviewCount = members.filter((m) => m.needsReview).length
 
   return (
     <section className="panel">
       <header className="panel-head">
         <div>
           <h2>회원 관리</h2>
-          <p className="muted">전체 {members.length}명 · 활동 {activeCount}명{busy && ' · 저장 중…'}</p>
+          <p className="muted">전체 {members.length}명 · 활동 {activeCount}명
+            {reviewCount > 0 && <> · <span className="review-chip">포지션·실력 미입력 {reviewCount}명</span></>}
+            {busy && ' · 저장 중…'}</p>
         </div>
         <div className="row gap-s wrap">
           <button className="btn ghost" onClick={() => setCsvOpen((v) => !v)}>CSV 불러오기</button>
@@ -128,23 +135,33 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
       )}
 
       <form className="member-form" onSubmit={(e) => { e.preventDefault(); save() }}>
-        <input placeholder="이름" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
-        <input placeholder="번호" type="number" className="w-num" value={draft.backNumber ?? ''} onChange={(e) => setDraft({ ...draft, backNumber: e.target.value ? Number(e.target.value) : undefined })} />
+        <input placeholder="이름" value={draft.name} onChange={(e) => setDraftState({ ...draft, name: e.target.value })} required />
+        <input
+          placeholder="년생" className="w-num" inputMode="numeric"
+          value={yearText}
+          maxLength={4}
+          onChange={(e) => {
+            const v = e.target.value.replace(/[^0-9]/g, '')
+            setYearText(v)
+            setDraftState({ ...draft, birthYear: v.length === 2 || v.length === 4 ? parseBirthYear(v) : undefined })
+          }}
+        />
+        <input placeholder="번호" type="number" className="w-num" value={draft.backNumber ?? ''} onChange={(e) => setDraftState({ ...draft, backNumber: e.target.value ? Number(e.target.value) : undefined })} />
         <label className="field">주
-          <select value={draft.mainPosition} onChange={(e) => setDraft({ ...draft, mainPosition: e.target.value as Position })}>
+          <select value={draft.mainPosition} onChange={(e) => setDraftState({ ...draft, mainPosition: e.target.value as Position })}>
             {POSITIONS.map((p) => <option key={p} value={p}>{POSITION_LABEL[p]}</option>)}
           </select>
         </label>
         <label className="field">부
-          <select value={draft.subPosition ?? ''} onChange={(e) => setDraft({ ...draft, subPosition: (e.target.value || undefined) as Position | undefined })}>
+          <select value={draft.subPosition ?? ''} onChange={(e) => setDraftState({ ...draft, subPosition: (e.target.value || undefined) as Position | undefined })}>
             <option value="">없음</option>
             {POSITIONS.map((p) => <option key={p} value={p}>{POSITION_LABEL[p]}</option>)}
           </select>
         </label>
         <label className="field">실력 <b className="skill-val">{draft.skill}</b>
-          <input type="range" min={SKILL_MIN} max={SKILL_MAX} value={draft.skill} onChange={(e) => setDraft({ ...draft, skill: Number(e.target.value) })} />
+          <input type="range" min={SKILL_MIN} max={SKILL_MAX} value={draft.skill} onChange={(e) => setDraftState({ ...draft, skill: Number(e.target.value) })} />
         </label>
-        <input placeholder="메모" value={draft.memo ?? ''} onChange={(e) => setDraft({ ...draft, memo: e.target.value || undefined })} />
+        <input placeholder="메모" value={draft.memo ?? ''} onChange={(e) => setDraftState({ ...draft, memo: e.target.value || undefined })} />
         <button className="btn primary" type="submit" disabled={busy}>{draft.id ? '수정 저장' : '회원 추가'}</button>
         {draft.id && <button className="btn ghost" type="button" onClick={() => setDraft(emptyDraft())}>취소</button>}
       </form>
@@ -154,16 +171,17 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
       <div className="table-wrap">
         <table className="members">
           <thead>
-            <tr><th>번호</th><th>이름</th><th>주포지션</th><th>부포지션</th><th>실력</th><th>상태</th><th>메모</th><th /></tr>
+            <tr><th>년생</th><th>번호</th><th>이름</th><th>주포지션</th><th>부포지션</th><th>실력</th><th>상태</th><th>메모</th><th /></tr>
           </thead>
           <tbody>
             {filtered.map((m) => (
               <tr key={m.id} className={m.status === 'INACTIVE' ? 'inactive' : ''}>
+                <td>{shortYear(m.birthYear)}</td>
                 <td className="muted">{m.backNumber ?? '-'}</td>
                 <td><b>{m.name}</b></td>
                 <td><span className={`pos pos-${m.mainPosition}`}>{POSITION_LABEL[m.mainPosition]}</span></td>
                 <td>{m.subPosition ? <span className={`pos pos-${m.subPosition} light`}>{POSITION_LABEL[m.subPosition]}</span> : <span className="muted">-</span>}</td>
-                <td><SkillBar value={m.skill} /></td>
+                <td>{m.needsReview ? <span className="review-chip">미입력</span> : <SkillBar value={m.skill} />}</td>
                 <td>
                   <button className="link" disabled={busy} onClick={() => toggleStatus(m)}>
                     {m.status === 'ACTIVE' ? '활동' : '휴면'}
@@ -184,7 +202,7 @@ export function MemberManager({ members, dispatch, onReload }: Props) {
               </tr>
             ))}
             {members.length === 0 && (
-              <tr><td colSpan={8} className="muted empty">아직 등록된 회원이 없습니다. 위에서 추가하거나 CSV로 불러오세요.</td></tr>
+              <tr><td colSpan={9} className="muted empty">아직 등록된 회원이 없습니다. 위에서 추가하거나 CSV로 불러오세요.</td></tr>
             )}
           </tbody>
         </table>

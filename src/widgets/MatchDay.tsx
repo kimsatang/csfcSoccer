@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Dispatch } from 'react'
 import type { Action, DayDraft } from '../app/store'
 import type { Player } from '../entities/player'
-import { POSITIONS, POSITION_LABEL } from '../entities/player'
+import { POSITIONS, POSITION_LABEL, shortYear, skillText } from '../entities/player'
 import type { SeasonBundle } from '../entities/season'
 import { matchDates, nextMatchDate, rosters, shortDate } from '../entities/season'
 import { TEAM_COLORS } from '../features/build-teams'
@@ -170,13 +170,14 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
         {bySlot.map((players, slot) => {
           const r = teamRosters.find((x) => x.team.slot === slot)
           const absentLeaders = [r?.captain, r?.vice].filter((p) => p && !day.attendance.includes(p.id)) as Player[]
-          const avg = players.length ? players.reduce((s, a) => s + a.player.skill, 0) / players.length : 0
+          const rated = players.filter((a) => !a.player.needsReview)
+          const avg = rated.length ? rated.reduce((s, a) => s + a.player.skill, 0) / rated.length : 0
           const order = { CAPTAIN: 0, VICE: 1, MEMBER: 2 }
           return (
             <article key={slot} className="team" style={{ ['--team' as string]: TEAM_COLORS[slot].hex }}>
               <header className="team-head">
                 <h3>{teamName(slot)}</h3>
-                <span className="team-meta">{players.length}명{showSkill && players.length > 0 && <> · 평균 {avg.toFixed(1)}</>}</span>
+                <span className="team-meta">{players.length}명{showSkill && rated.length > 0 && <> · 평균 {avg.toFixed(1)}</>}</span>
               </header>
               <div className="pos-summary">
                 {POSITIONS.map((p) => <span key={p} className={`pos pos-${p} light`}>{POSITION_LABEL[p]} {players.filter((a) => a.player.mainPosition === p).length}</span>)}
@@ -186,9 +187,9 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
                   <li key={a.player.id} className={a.role !== 'MEMBER' ? 'leader' : ''}>
                     {a.role === 'CAPTAIN' && <span className="badge cap">팀장</span>}
                     {a.role === 'VICE' && <span className="badge vice">부팀장</span>}
-                    <span className="name">{a.player.name}{a.homeSlot !== undefined && a.homeSlot !== slot && <span className="temp"> 임시</span>}</span>
+                    <span className="name">{a.player.name} <span className="year">{shortYear(a.player.birthYear)}</span>{a.homeSlot !== undefined && a.homeSlot !== slot && <span className="temp"> 임시</span>}</span>
                     <span className={`pos pos-${a.player.mainPosition}`}>{POSITION_LABEL[a.player.mainPosition]}</span>
-                    {showSkill && <span className="skill-num">{a.player.skill}</span>}
+                    {showSkill && <span className="skill-num">{skillText(a.player)}</span>}
                     <MoveSelect
                       current={slot}
                       home={a.homeSlot}

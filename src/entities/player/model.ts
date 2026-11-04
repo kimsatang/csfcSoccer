@@ -38,6 +38,10 @@ export interface Player {
   skill: number
   /** 등번호 (선택) */
   backNumber?: number
+  /** 출생년도 4자리 (선택) — 드래프트 나이대 그룹 */
+  birthYear?: number
+  /** 포지션·실력이 임시값이라 확인이 필요한 회원 */
+  needsReview?: boolean
   /** 회원 상태 (필수, 기본 ACTIVE) */
   status: MemberStatus
   /** 메모 (선택) — 운영진 참고용 */

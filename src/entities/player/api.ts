@@ -10,9 +10,11 @@ interface MemberRow {
   skill: number
   status: MemberStatus
   memo: string | null
+  birth_year: number | null
+  needs_review: boolean
 }
 
-const COLUMNS = 'id,name,back_number,main_position,sub_position,skill,status,memo'
+const COLUMNS = 'id,name,back_number,main_position,sub_position,skill,status,memo,birth_year,needs_review'
 
 function fromRow(r: MemberRow): Player {
   return {
@@ -24,6 +26,8 @@ function fromRow(r: MemberRow): Player {
     skill: r.skill,
     status: r.status,
     memo: r.memo ?? undefined,
+    birthYear: r.birth_year ?? undefined,
+    needsReview: r.needs_review,
   }
 }
 
@@ -36,11 +40,13 @@ function toRow(p: Omit<Player, 'id'>): Omit<MemberRow, 'id'> {
     skill: p.skill,
     status: p.status,
     memo: p.memo ?? null,
+    birth_year: p.birthYear ?? null,
+    needs_review: p.needsReview ?? false,
   }
 }
 
 export async function fetchMembers(): Promise<Player[]> {
-  const { data, error } = await supabase.from('members').select(COLUMNS).order('back_number', { nullsFirst: false }).order('name')
+  const { data, error } = await supabase.from('members').select(COLUMNS).order('birth_year', { nullsFirst: false }).order('name')
   if (error) throw error
   return (data as MemberRow[]).map(fromRow)
 }

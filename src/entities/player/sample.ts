@@ -38,6 +38,6 @@ export const SAMPLE_MEMBERS: Player[] = RAW.map(([name, mainPosition, subPositio
   status: 'ACTIVE',
 }))
 
-export const CSV_TEMPLATE = `이름,등번호,주포지션,부포지션,실력,상태,메모
-홍길동,7,FW,MF,8,활동,
-김철수,1,GK,,6,활동,주말만 가능`
+export const CSV_TEMPLATE = `이름,년생,등번호,주포지션,부포지션,실력,상태,메모
+홍길동,87,7,FW,MF,8,활동,
+김철수,82,1,GK,,6,활동,주말만 가능`
