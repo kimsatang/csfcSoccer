@@ -3,7 +3,8 @@ import type { Dispatch } from 'react'
 import {
   Accordion, Alert, Badge, Button, Card, Chip, Group, Menu, NativeSelect, Paper, SimpleGrid, Stack, Switch, Text, TextInput,
 } from '@mantine/core'
-import { IconArrowsExchange, IconCopy, IconDeviceFloppy, IconDownload, IconWand } from '@tabler/icons-react'
+import { IconArrowsExchange, IconClipboardList, IconCopy, IconDeviceFloppy, IconDownload, IconWand } from '@tabler/icons-react'
+import { PasteAttendance } from '../features/attendance/PasteAttendance'
 import { confirmAction, copyText, notify } from '../shared/ui/feedback'
 import { PosBadge, RoleBadge } from '../shared/ui/badges'
 import type { Action, DayDraft } from '../app/store'
@@ -33,6 +34,8 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
   const title = day.title ?? `CSFC ${shortDate(date)} 경기`
   const [saved, setSaved] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [openPanel, setOpenPanel] = useState<string | null>(day.attendance.length === 0 ? 'att' : null)
 
   const teamRosters = useMemo(() => rosters(members, bundle), [members, bundle])
   const homeSlot = useMemo(() => {
@@ -142,11 +145,12 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
       </Card>
 
       <Card padding={0}>
-        <Accordion defaultValue={day.attendance.length === 0 ? 'att' : null}>
+        <Accordion value={openPanel} onChange={setOpenPanel}>
           <Accordion.Item value="att" style={{ borderBottom: 0 }}>
             <Accordion.Control><Text fw={800}>참석 체크 <Text span c="dimmed" fw={600}>{attending.length}/{active.length}</Text></Text></Accordion.Control>
             <Accordion.Panel>
               <Group gap={6} mb="sm">
+                <Button size="compact-sm" leftSection={<IconClipboardList size={14} />} onClick={() => setPasteOpen(true)}>명단 붙여넣기</Button>
                 <Button size="compact-sm" variant="light" leftSection={<IconDownload size={14} />} onClick={importLeaders}>팀장 입력 불러오기</Button>
                 <Button size="compact-sm" variant="default" onClick={() => dispatch({ type: 'day/setAttendance', date, ids: active.map((m) => m.id) })}>전체 참석</Button>
                 <Button size="compact-sm" variant="subtle" color="gray" onClick={() => dispatch({ type: 'day/setAttendance', date, ids: [] })}>전체 해제</Button>
@@ -170,6 +174,18 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
           </Accordion.Item>
         </Accordion>
       </Card>
+
+      <PasteAttendance
+        opened={pasteOpen} onClose={() => setPasteOpen(false)}
+        members={members} current={day.attendance}
+        teamColor={(id) => { const h = homeSlot.get(id); return h ? TEAM_COLORS[h.slot].mantine : undefined }}
+        onApply={(ids) => {
+          setSaved(null)
+          dispatch({ type: 'day/setAttendance', date, ids })
+          setOpenPanel('att')
+          notify.ok(`참석 ${ids.length}명으로 체크했습니다.`)
+        }}
+      />
 
       {waiting.length > 0 && (
         <Alert color="orange" title={`팀 미배정 참석자 ${waiting.length}명`}>
