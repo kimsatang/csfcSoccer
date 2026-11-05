@@ -157,12 +157,9 @@ export function renderTeamRoster(team: RosterImageTeam, meta: RosterImageMeta): 
     ctx.fillStyle = CARD
     ctx.fill()
     const cy = y + (rowH - 12) / 2
-    ctx.fillStyle = 'rgba(255,255,255,0.4)'
-    ctx.font = `700 22px ${FONT}`
-    ctx.fillText(p.pickNo ? `#${p.pickNo}` : `${i + 1}`, x + 18, cy)
     ctx.fillStyle = '#fff'
     ctx.font = `800 34px ${FONT}`
-    ctx.fillText(fit(ctx, p.name, cw - 230), x + 78, cy)
+    ctx.fillText(fit(ctx, p.name, cw - 170), x + 24, cy)
     ctx.fillStyle = 'rgba(255,255,255,0.55)'
     ctx.font = `700 24px ${FONT}`
     ctx.textAlign = 'right'

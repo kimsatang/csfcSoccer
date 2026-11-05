@@ -170,12 +170,10 @@ function TeamRosterCard({ roster, rows, saving, onSave }: { roster: Roster; rows
         </Group>
       )}
       <Stack gap={4}>
-        {rows.map(({ player: p, role, pickNo }, i) => (
+        {rows.map(({ player: p, role }) => (
           <Group key={p.id} gap={6} wrap="nowrap" px={8} py={5}
             style={{ border: '1px solid var(--mantine-color-gray-2)', borderRadius: 8, background: role ? `var(--mantine-color-${color.mantine}-0)` : 'white' }}>
-            {role
-              ? <RoleBadge role={role} color={color.mantine} />
-              : <Text size="xs" c="dimmed" fw={700} w={26}>{pickNo ? `#${pickNo}` : i + 1}</Text>}
+            {role && <RoleBadge role={role} color={color.mantine} />}
             <Text fw={role ? 800 : 700} size="sm" style={{ flex: 1 }} truncate>{p.name} <span className="year">{shortYear(p.birthYear)}</span></Text>
             <AttBadge level={p.attendanceLevel} compact />
             {!p.positionReview && <PosBadge pos={p.mainPosition} size="xs" />}
