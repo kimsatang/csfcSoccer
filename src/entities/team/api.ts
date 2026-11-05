@@ -58,3 +58,10 @@ export async function fetchDayAttendeesAllTeams(date: string): Promise<string[]>
   if (error) throw error
   return [...new Set((data ?? []).flatMap((r) => r.attendee_ids as string[]))]
 }
+
+/** 경기 당일(운영진) 참석 변경을 팀 관리(team_days)에 반영. team_id null = 불참 */
+export async function applyDayAttendance(date: string, changes: { member_id: string; team_id: string | null }[]): Promise<void> {
+  if (!changes.length) return
+  const { error } = await supabase.rpc('apply_day_attendance', { p_date: date, p_changes: changes })
+  if (error) throw error
+}

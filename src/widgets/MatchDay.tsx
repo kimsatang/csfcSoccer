@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch } from 'react'
 import {
   Accordion, Alert, Badge, Button, Card, Chip, Group, Menu, NativeSelect, Paper, SimpleGrid, Stack, Switch, Text, TextInput,
@@ -15,7 +15,7 @@ import { matchDates, nextMatchDate, rosters, shortDate } from '../entities/seaso
 import { TEAM_COLORS } from '../features/build-teams'
 import type { MatchPlayerInput } from '../features/build-teams/saveMatch'
 import { saveMatch } from '../features/build-teams/saveMatch'
-import { fetchDayAttendeesAllTeams } from '../entities/team/api'
+import { applyDayAttendance, fetchDayAttendeesAllTeams } from '../entities/team/api'
 
 interface Props {
   members: Player[]
@@ -48,7 +48,7 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
     return m
   }, [teamRosters])
 
-  const active = members.filter((m) => m.status === 'ACTIVE')
+  const active = useMemo(() => members.filter((m) => m.status === 'ACTIVE'), [members])
   const unassignedMembers = active.filter((m) => !homeSlot.has(m.id))
   const attending: DayPlayer[] = active
     .filter((m) => day.attendance.includes(m.id))
@@ -63,6 +63,39 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
   const waiting = attending.filter((a) => a.slot === undefined)
   const counts = bySlot.map((t) => t.length)
   const gap = Math.max(...counts) - Math.min(...counts)
+
+  // ── 팀 관리 반영: 바뀐 회원만 (회원 → 그날 팀 id, 불참·미배정은 null)
+  const [sync, setSync] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const teamIdBySlot = useMemo(() => new Map(bundle.teams.map((t) => [t.slot, t.id])), [bundle.teams])
+  const dayMap = useMemo(() => {
+    const m = new Map<string, string | null>()
+    for (const p of active) {
+      const on = day.attendance.includes(p.id)
+      const slot = day.overrides[p.id] ?? homeSlot.get(p.id)?.slot
+      m.set(p.id, on && slot !== undefined ? teamIdBySlot.get(slot) ?? null : null)
+    }
+    return m
+  }, [active, day.attendance, day.overrides, homeSlot, teamIdBySlot])
+  const synced = useRef<{ date: string; map: Map<string, string | null> } | null>(null)
+  useEffect(() => {
+    // 날짜를 처음 열 때는 기준만 잡고 보내지 않음 (팀장이 입력해 둔 참석을 덮어쓰지 않도록)
+    if (!synced.current || synced.current.date !== date) { synced.current = { date, map: dayMap }; return }
+    const prev = synced.current.map
+    const changes = [...dayMap].filter(([id, team]) => prev.get(id) !== team).map(([member_id, team_id]) => ({ member_id, team_id }))
+    if (!changes.length) return
+    const timer = window.setTimeout(() => {
+      synced.current = { date, map: dayMap } // 보내는 시점에 기준 갱신 (중복 전송 방지)
+      setSync('saving')
+      applyDayAttendance(date, changes)
+        .then(() => setSync('saved'))
+        .catch((e: { code?: string; message?: string }) => {
+          // DB 함수가 아직 없으면(마이그레이션 전) 조용히 건너뜀
+          if (e.code === 'PGRST202' || /apply_day_attendance/.test(e.message ?? '')) { setSync('idle'); return }
+          setSync('error'); notify.error(`팀 관리 반영 실패: ${e.message ?? e}`)
+        })
+    }, 700)
+    return () => window.clearTimeout(timer)
+  }, [date, dayMap])
 
   const setOverride = (id: string, slot: number | null) => { setSaved(null); dispatch({ type: 'day/override', date, id, slot }) }
 
@@ -132,6 +165,9 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
         </Group>
         <Group gap={6} mt="sm">
           <Badge variant="light" color="gray">참석 {attending.length}</Badge>
+          {sync === 'saving' && <Badge variant="light" color="gray">팀 관리 반영 중</Badge>}
+          {sync === 'saved' && <Badge variant="light" color="brand">팀 관리에 반영됨</Badge>}
+          {sync === 'error' && <Badge variant="light" color="red">팀 관리 반영 실패</Badge>}
           {counts.map((c, i) => <Badge key={i} variant="light" color={TEAM_COLORS[i].mantine}>{teamName(i).replace(/팀$/, '')} {c}</Badge>)}
           {saved === date && <Badge>기록 저장됨</Badge>}
         </Group>
