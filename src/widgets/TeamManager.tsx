@@ -19,6 +19,8 @@ import { TEAM_COLORS } from '../features/build-teams'
 import { PosBadge, RoleBadge } from '../shared/ui/badges'
 import { confirmAction, notify } from '../shared/ui/feedback'
 import { InvitePanel } from './InvitePanel'
+import type { DragSource, DropTarget } from './usePitchDrag'
+import { usePitchDrag } from './usePitchDrag'
 
 interface Props {
   members: Player[]
@@ -104,6 +106,17 @@ export function TeamManager({ members, bundle, viewer }: Props) {
     setPreview(null)
     if (teamId) persist(() => saveGame(teamId, date, g))
   }
+
+  /** 드래그 앤 드롭: 자리↔자리 맞바꿈, 교체→자리 투입, 자리→교체 영역으로 빼기 */
+  const onDrop = (src: DragSource, target: DropTarget) => {
+    if (target === 'bench') {
+      if (src.fromKey) updateGame({ ...game, slots: assignSlot(game.slots, src.fromKey, null) })
+      return
+    }
+    if (target === src.fromKey) return
+    updateGame({ ...game, slots: assignSlot(game.slots, target, src.memberId) })
+  }
+  const { drag, start: startDrag, consumeClick } = usePitchDrag(onDrop, canEdit)
 
   const toggleAttendee = (id: string) => {
     if (!canEdit) return
@@ -308,12 +321,16 @@ export function TeamManager({ members, bundle, viewer }: Props) {
                   <PitchLines />
                   {slots.map((s) => {
                     const p = game.slots[s.key] ? byId.get(game.slots[s.key]) : undefined
+                    const dragging = drag?.fromKey === s.key
+                    const over = drag && drag.over === s.key && !dragging
                     return (
                       <button
                         key={s.key}
-                        className={`slot ${p ? 'filled' : ''} ${pickSlot?.key === s.key ? 'picking' : ''}`}
+                        data-drop={s.key}
+                        className={`slot ${p ? 'filled' : ''} ${pickSlot?.key === s.key ? 'picking' : ''} ${dragging ? 'drag-origin' : ''} ${over ? 'drop-over' : ''} ${canEdit && p ? 'draggable' : ''}`}
                         style={{ left: `${s.x}%`, top: `${s.y}%` }}
-                        onClick={() => canEdit && setPickSlot(s)}
+                        onPointerDown={p ? startDrag({ memberId: p.id, name: p.name, fromKey: s.key }) : undefined}
+                        onClick={() => { if (consumeClick()) return; if (canEdit) setPickSlot(s) }}
                         disabled={!canEdit}
                         aria-label={`${s.label} ${p?.name ?? '비어 있음'}`}
                       >
@@ -323,22 +340,28 @@ export function TeamManager({ members, bundle, viewer }: Props) {
                     )
                   })}
                 </div>
-                <Text size="xs" c="dimmed" ta="center" mt={6}>{canEdit ? '자리를 눌러 선수를 배정하세요 · ' : ''}선발 {assigned.size}/11</Text>
+                <Text size="xs" c="dimmed" ta="center" mt={6}>{canEdit ? '자리를 눌러 배정 · 끌어서 자리 이동 · ' : ''}선발 {assigned.size}/11</Text>
               </Box>
 
               <Stack gap="sm">
-                <div>
+                <div data-drop="bench" className={`bench-drop ${drag?.fromKey ? 'bench-armed' : ''} ${drag?.fromKey && drag.over === 'bench' ? 'drop-over' : ''}`}>
                   <Text fw={800} size="sm" mb={6}>교체 / 미배정 <Text span c="dimmed">{bench.length}명</Text></Text>
                   {attendees.length === 0
                     ? <Text size="sm" c="dimmed">위에서 참석자를 먼저 체크하세요.</Text>
                     : (
                       <Group gap={6}>
                         {bench.map((p) => (
-                          <Badge key={p.id} size="lg" variant="default" radius="md" tt="none" rightSection={!p.positionReview ? <PosBadge pos={p.mainPosition} size="xs" light /> : null}>
+                          <Badge
+                            key={p.id} size="lg" variant="default" radius="md" tt="none"
+                            className={canEdit ? 'draggable' : undefined}
+                            style={drag?.memberId === p.id ? { opacity: 0.35 } : undefined}
+                            onPointerDown={startDrag({ memberId: p.id, name: p.name })}
+                            rightSection={!p.positionReview ? <PosBadge pos={p.mainPosition} size="xs" light /> : null}>
                             {p.name}
                           </Badge>
                         ))}
                         {bench.length === 0 && <Text size="sm" c="dimmed">모두 선발입니다.</Text>}
+                        {canEdit && bench.length > 0 && <Text size="xs" c="dimmed" w="100%">선수를 경기장 자리로 끌어 넣을 수 있어요. 경기장 선수를 여기로 끌면 교체로 빠집니다.</Text>}
                       </Group>
                     )}
                 </div>
@@ -357,6 +380,13 @@ export function TeamManager({ members, bundle, viewer }: Props) {
             </Box>
           )}
         </>
+      )}
+
+      {drag && (
+        <div className="drag-ghost" style={{ left: drag.x, top: drag.y, ['--team' as string]: color }}>
+          <span className="slot-dot">{drag.fromKey ? slots.find((x) => x.key === drag.fromKey)?.label : ''}</span>
+          <span className="slot-name">{drag.name}</span>
+        </div>
       )}
 
       <Drawer
