@@ -3,7 +3,7 @@ import {
   ActionIcon, Alert, AppShell, Avatar, Badge, Box, Center, Container, Group, Loader, Menu, SegmentedControl, Stack, Text, UnstyledButton,
 } from '@mantine/core'
 import { useMediaQuery } from '@mantine/hooks'
-import { IconCalendarEvent, IconLogout, IconShirtSport, IconTournament, IconUsers } from '@tabler/icons-react'
+import { IconCalendarEvent, IconListDetails, IconLogout, IconShirtSport, IconTournament, IconUsers } from '@tabler/icons-react'
 import { fetchMembers, fetchMembersForLeader } from '../entities/player/api'
 import type { SeasonBundle } from '../entities/season'
 import { fetchCurrentSeason } from '../entities/season/api'
@@ -14,17 +14,19 @@ import { InviteConfirm } from '../features/invite/InviteConfirm'
 import { LEADER_ROLE_LABEL } from '../features/invite/api'
 import { isSupabaseConfigured } from '../shared/api/supabase'
 import { AdminPanel } from '../widgets/AdminPanel'
+import { FinalRoster } from '../widgets/FinalRoster'
 import { DraftBoard } from '../widgets/DraftBoard'
 import { MatchDay } from '../widgets/MatchDay'
 import { MemberManager } from '../widgets/MemberManager'
 import { TeamManager } from '../widgets/TeamManager'
 import { useAppStore } from './store'
 
-type Step = 'members' | 'draft' | 'team' | 'match'
+type Step = 'members' | 'draft' | 'roster' | 'team' | 'match'
 
 const STEP_META: Record<Step, { label: string; icon: typeof IconUsers }> = {
   members: { label: '회원', icon: IconUsers },
   draft: { label: '드래프트', icon: IconTournament },
+  roster: { label: '명단', icon: IconListDetails },
   team: { label: '팀 관리', icon: IconShirtSport },
   match: { label: '경기 당일', icon: IconCalendarEvent },
 }
@@ -49,7 +51,7 @@ export default function App() {
 function TeamMaker({ viewer }: { viewer: Viewer }) {
   const [state, dispatch] = useAppStore()
   const [bundle, setBundle] = useState<SeasonBundle | null>(null)
-  const steps: Step[] = viewer.isAdmin ? ['members', 'draft', 'team', 'match'] : ['draft', 'team']
+  const steps: Step[] = viewer.isAdmin ? ['members', 'draft', 'roster', 'team', 'match'] : ['draft', 'roster', 'team']
   const [step, setStep] = useState<Step>('draft')
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
@@ -146,6 +148,7 @@ function TeamMaker({ viewer }: { viewer: Viewer }) {
             {loaded && step === 'draft' && (bundle
               ? <DraftBoard members={state.members} bundle={bundle} showSkill={showSkill} onChanged={reloadSeason} isAdmin={viewer.isAdmin} isSuper={viewer.isSuper} myTeamIds={myTeamIds} />
               : noSeason)}
+            {loaded && step === 'roster' && (bundle ? <FinalRoster members={state.members} bundle={bundle} /> : noSeason)}
             {loaded && step === 'team' && (bundle ? <TeamManager members={state.members} bundle={bundle} viewer={viewer} /> : noSeason)}
             {loaded && step === 'match' && viewer.isAdmin && (bundle
               ? <MatchDay members={state.members} bundle={bundle} days={state.days} showSkill={showSkill} dispatch={dispatch} />

@@ -387,7 +387,7 @@ function RosterRow({ p, role, pickNo, color, showSkill, children }: {
   )
 }
 
-function draftText(seasonName: string, dates: string[], rs: Roster[]): string {
+export function draftText(seasonName: string, dates: string[], rs: Roster[]): string {
   const blocks = rs.map((r) => [
     `[${r.team.name}] ${2 + r.picks.length}명`,
     `팀장 ${r.captain?.name ?? '-'} / 부팀장 ${r.vice?.name ?? '-'}`,
