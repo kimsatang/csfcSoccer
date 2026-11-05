@@ -12,7 +12,7 @@ import { matchDates, nextMatchDate, rosters, shortDate } from '../entities/seaso
 import type { TeamGame } from '../entities/team/api'
 import { fetchTeamDay, newGame, removeGame, saveAttendees, saveGame } from '../entities/team/api'
 import type { Slot, SlotMap } from '../entities/team/formations'
-import { FORMATIONS, FORMATION_NAMES, assignSlot, remapSlots } from '../entities/team/formations'
+import { FORMATIONS, FORMATION_NAMES, POSITION_HEX, SLOT_POSITION, assignSlot, remapSlots, slotColor } from '../entities/team/formations'
 import { exportCanvas, renderLineup } from '../entities/team/renderLineup'
 import type { Viewer } from '../features/auth/useAuth'
 import { TEAM_COLORS } from '../features/build-teams'
@@ -30,12 +30,6 @@ interface Props {
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
-/** 자리 라벨에 맞는 포지션 선호 (자동 채우기용) */
-const SLOT_POS: Record<string, Player['mainPosition']> = {
-  GK: 'GK', LB: 'DF', RB: 'DF', CB: 'DF', LWB: 'DF', RWB: 'DF',
-  DM: 'MF', CM: 'MF', LM: 'MF', RM: 'MF', AM: 'MF',
-  LW: 'FW', RW: 'FW', ST: 'FW',
-}
 
 export function TeamManager({ members, bundle, viewer }: Props) {
   const manageable = useMemo(() => {
@@ -173,7 +167,7 @@ export function TeamManager({ members, bundle, viewer }: Props) {
     }
     for (const s of slots) {
       if (next[s.key]) continue
-      const want = SLOT_POS[s.label]
+      const want = SLOT_POSITION[s.label]
       const p = take((x) => !x.positionReview && x.mainPosition === want)
         ?? take((x) => !x.positionReview && x.subPosition === want)
         ?? (want === 'GK' ? undefined : take(() => true))
@@ -328,7 +322,7 @@ export function TeamManager({ members, bundle, viewer }: Props) {
                         key={s.key}
                         data-drop={s.key}
                         className={`slot ${p ? 'filled' : ''} ${pickSlot?.key === s.key ? 'picking' : ''} ${dragging ? 'drag-origin' : ''} ${over ? 'drop-over' : ''} ${canEdit && p ? 'draggable' : ''}`}
-                        style={{ left: `${s.x}%`, top: `${s.y}%` }}
+                        style={{ left: `${s.x}%`, top: `${s.y}%`, ['--pos' as string]: slotColor(s.label) }}
                         onPointerDown={p ? startDrag({ memberId: p.id, name: p.name, fromKey: s.key }) : undefined}
                         onClick={() => { if (consumeClick()) return; if (canEdit) setPickSlot(s) }}
                         disabled={!canEdit}
@@ -340,7 +334,12 @@ export function TeamManager({ members, bundle, viewer }: Props) {
                     )
                   })}
                 </div>
-                <Text size="xs" c="dimmed" ta="center" mt={6}>{canEdit ? '자리를 눌러 배정 · 끌어서 자리 이동 · ' : ''}선발 {assigned.size}/11</Text>
+                <Group justify="center" gap={10} mt={6}>
+                  {(['GK', 'DF', 'MF', 'FW'] as const).map((pos) => (
+                    <Group key={pos} gap={4}><span className="pos-dot" style={{ background: POSITION_HEX[pos] }} /><Text size="xs" fw={700}>{pos}</Text></Group>
+                  ))}
+                </Group>
+                <Text size="xs" c="dimmed" ta="center" mt={4}>{canEdit ? '자리를 눌러 배정 · 끌어서 자리 이동 · ' : ''}선발 {assigned.size}/11</Text>
               </Box>
 
               <Stack gap="sm">
@@ -383,7 +382,7 @@ export function TeamManager({ members, bundle, viewer }: Props) {
       )}
 
       {drag && (
-        <div className="drag-ghost" style={{ left: drag.x, top: drag.y, ['--team' as string]: color }}>
+        <div className="drag-ghost" style={{ left: drag.x, top: drag.y, ['--pos' as string]: drag.fromKey ? slotColor(slots.find((x) => x.key === drag.fromKey)?.label ?? '') : color }}>
           <span className="slot-dot">{drag.fromKey ? slots.find((x) => x.key === drag.fromKey)?.label : ''}</span>
           <span className="slot-name">{drag.name}</span>
         </div>

@@ -1,4 +1,5 @@
 import type { Slot } from './formations'
+import { slotColor } from './formations'
 
 export interface LineupImageInput {
   title: string // 예: 김동인팀
@@ -84,10 +85,11 @@ export function renderLineup(input: LineupImageInput): HTMLCanvasElement {
     const name = input.names[s.key]
     ctx.beginPath()
     ctx.arc(cx, cy, 40, 0, Math.PI * 2)
-    ctx.fillStyle = name ? input.color : 'rgba(255,255,255,0.18)'
+    const pc = slotColor(s.label)
+    ctx.fillStyle = name ? pc : 'rgba(255,255,255,0.12)'
     ctx.fill()
     ctx.lineWidth = 5
-    ctx.strokeStyle = '#ffffff'
+    ctx.strokeStyle = name ? '#ffffff' : pc
     ctx.stroke()
     ctx.fillStyle = '#ffffff'
     ctx.font = `800 24px ${FONT}`

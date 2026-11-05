@@ -96,3 +96,17 @@ export function assignSlot(slots: SlotMap, slotKey: string, memberId: string | n
   }
   return next
 }
+
+export type SlotPosition = 'GK' | 'DF' | 'MF' | 'FW'
+
+/** 자리 라벨 → 포지션 (전술판 색·자동 채우기) */
+export const SLOT_POSITION: Record<string, SlotPosition> = {
+  GK: 'GK', LB: 'DF', RB: 'DF', CB: 'DF', LWB: 'DF', RWB: 'DF',
+  DM: 'MF', CM: 'MF', LM: 'MF', RM: 'MF', AM: 'MF',
+  LW: 'FW', RW: 'FW', ST: 'FW',
+}
+
+/** 포지션 색 (화면 뱃지와 같은 계열: GK 노랑 · DF 파랑 · MF 청록 · FW 빨강) */
+export const POSITION_HEX: Record<SlotPosition, string> = { GK: '#f59f00', DF: '#4c6ef5', MF: '#12b886', FW: '#f03e3e' }
+
+export const slotColor = (label: string): string => POSITION_HEX[SLOT_POSITION[label] ?? 'MF']

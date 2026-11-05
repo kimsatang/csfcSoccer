@@ -46,7 +46,9 @@ body { background: var(--app-bg); -webkit-tap-highlight-color: transparent; }
   font-size: 11px; font-weight: 800; color: #fff; background: rgba(255, 255, 255, 0.18); transition: transform 0.12s;
 }
 .slot:active .slot-dot { transform: scale(0.92); }
-.slot.filled .slot-dot { background: var(--team); }
+.slot .slot-dot { border-color: var(--pos, #fff); background: color-mix(in srgb, var(--pos, #fff) 22%, transparent); }
+.slot.filled .slot-dot { background: var(--pos, var(--team)); border-color: #fff; }
+.pos-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .slot.picking .slot-dot { box-shadow: 0 0 0 4px #ffd84d; }
 /* 드래그 앤 드롭 */
 .draggable { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
@@ -58,7 +60,7 @@ body { background: var(--app-bg); -webkit-tap-highlight-color: transparent; }
   position: fixed; z-index: 1000; pointer-events: none; transform: translate(-50%, -60%) scale(1.1);
   display: flex; flex-direction: column; align-items: center; gap: 3px; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.35));
 }
-.drag-ghost .slot-dot { background: var(--team); }
+.drag-ghost .slot-dot { background: var(--pos, var(--team)); }
 .bench-drop { border-radius: 10px; padding: 6px; margin: -6px; transition: background 0.15s, box-shadow 0.15s; }
 .bench-drop.bench-armed { box-shadow: inset 0 0 0 2px var(--mantine-color-gray-4); background: var(--mantine-color-gray-0); }
 .bench-drop.drop-over { box-shadow: inset 0 0 0 2px var(--mantine-color-red-5); background: var(--mantine-color-red-0); }
