@@ -186,7 +186,7 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
             <Accordion.Control><Text fw={800}>참석 체크 <Text span c="dimmed" fw={600}>{attending.length}/{active.length}</Text></Text></Accordion.Control>
             <Accordion.Panel>
               <Group gap={6} mb="sm">
-                <Button size="compact-sm" leftSection={<IconClipboardList size={14} />} onClick={() => setPasteOpen(true)}>명단 붙여넣기</Button>
+                <Button size="compact-sm" leftSection={<IconClipboardList size={14} />} onClick={() => setPasteOpen(true)}>카톡 투표 가져오기</Button>
                 <Button size="compact-sm" variant="light" leftSection={<IconDownload size={14} />} onClick={importLeaders}>팀장 입력 불러오기</Button>
                 <Button size="compact-sm" variant="default" onClick={() => dispatch({ type: 'day/setAttendance', date, ids: active.map((m) => m.id) })}>전체 참석</Button>
                 <Button size="compact-sm" variant="subtle" color="gray" onClick={() => dispatch({ type: 'day/setAttendance', date, ids: [] })}>전체 해제</Button>
