@@ -58,8 +58,38 @@ export const FORMATIONS: Record<string, Slot[]> = {
     { key: 'RCM', label: 'CM', x: 72, y: 50 }, ...TWO_UP],
 }
 
-export const FORMATION_NAMES = Object.keys(FORMATIONS)
+/** 11인 포메이션 이름 */
+export const FORMATION_NAMES_11 = Object.keys(FORMATIONS)
+
+/**
+ * 12인 포메이션: 11인 포메이션에 한 자리를 더함 (이름 뒤 "+1").
+ * 주로 공격형 미드필더, 이미 AM이 있으면 투톱으로.
+ */
+const EXTRA_12: Record<string, Slot> = {
+  '4-4-2': { key: 'AM12', label: 'AM', x: 50, y: 35 },
+  '4-3-3': { key: 'AM12', label: 'AM', x: 50, y: 38 },
+  '4-2-3-1': { key: 'ST12', label: 'ST', x: 67, y: 20 },
+  '4-1-4-1': { key: 'ST12', label: 'ST', x: 67, y: 20 },
+  '3-5-2': { key: 'AM12', label: 'AM', x: 50, y: 33 },
+  '3-4-3': { key: 'AM12', label: 'AM', x: 50, y: 38 },
+  '5-3-2': { key: 'AM12', label: 'AM', x: 50, y: 34 },
+}
+for (const name of FORMATION_NAMES_11) {
+  const extra = EXTRA_12[name]
+  if (!extra) continue
+  // 투톱 추가 시 기존 원톱은 왼쪽으로 조금 이동
+  const base = FORMATIONS[name].map((s) => (extra.key === 'ST12' && s.key === 'ST' ? { ...s, x: 36, y: 20 } : s))
+  FORMATIONS[`${name}+1`] = [...base, extra]
+}
+export const FORMATION_NAMES_12 = FORMATION_NAMES_11.filter((n) => EXTRA_12[n]).map((n) => `${n}+1`)
+export const FORMATION_NAMES = [...FORMATION_NAMES_11, ...FORMATION_NAMES_12]
 export const DEFAULT_FORMATION = '4-4-2'
+
+/** 포메이션 선택 목록 (11인 / 12인 묶음) */
+export const FORMATION_OPTIONS = [
+  { group: '11인', items: FORMATION_NAMES_11.map((n) => ({ value: n, label: n })) },
+  { group: '12인', items: FORMATION_NAMES_12.map((n) => ({ value: n, label: `${n.replace('+1', '')} +1 (12인)` })) },
+]
 
 export type SlotMap = Record<string, string> // slotKey → memberId
 

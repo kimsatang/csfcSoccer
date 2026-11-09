@@ -12,7 +12,7 @@ import { matchDates, nextMatchDate, rosters, shortDate } from '../entities/seaso
 import type { TeamGame } from '../entities/team/api'
 import { fetchTeamDay, newGame, removeGame, saveAttendees, saveGame } from '../entities/team/api'
 import type { Slot, SlotMap } from '../entities/team/formations'
-import { FORMATIONS, FORMATION_NAMES, POSITION_HEX, SLOT_POSITION, assignSlot, remapSlots, slotColor } from '../entities/team/formations'
+import { FORMATIONS, FORMATION_OPTIONS, POSITION_HEX, SLOT_POSITION, assignSlot, remapSlots, slotColor } from '../entities/team/formations'
 import { exportCanvas, renderLineup } from '../entities/team/renderLineup'
 import type { Viewer } from '../features/auth/useAuth'
 import { TEAM_COLORS } from '../features/build-teams'
@@ -300,7 +300,7 @@ export function TeamManager({ members, bundle, viewer }: Props) {
               <NativeSelect
                 disabled={!canEdit} label="포메이션" value={game.formation}
                 onChange={(e) => updateGame({ ...game, formation: e.currentTarget.value, slots: remapSlots(game.slots, game.formation, e.currentTarget.value) })}
-                data={FORMATION_NAMES}
+                data={FORMATION_OPTIONS}
               />
               <NativeSelect
                 disabled={!canEdit} label="상대" value={game.opponentTeamId ?? ''}
@@ -339,7 +339,7 @@ export function TeamManager({ members, bundle, viewer }: Props) {
                     <Group key={pos} gap={4}><span className="pos-dot" style={{ background: POSITION_HEX[pos] }} /><Text size="xs" fw={700}>{pos}</Text></Group>
                   ))}
                 </Group>
-                <Text size="xs" c="dimmed" ta="center" mt={4}>{canEdit ? '자리를 눌러 배정 · 끌어서 자리 이동 · ' : ''}선발 {assigned.size}/11</Text>
+                <Text size="xs" c="dimmed" ta="center" mt={4}>{canEdit ? '자리를 눌러 배정 · 끌어서 자리 이동 · ' : ''}선발 {assigned.size}/{slots.length}</Text>
               </Box>
 
               <Stack gap="sm">
