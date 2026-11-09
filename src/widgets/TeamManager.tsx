@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ActionIcon, Alert, Badge, Box, Button, Card, Center, Chip, Drawer, Group, Loader, Menu, Modal, NativeSelect, Paper, ScrollArea,
+  ActionIcon, Alert, Badge, Box, Button, Card, Center, Chip, Drawer, Group, Loader, Menu, Modal, NativeSelect, Paper, Progress, ScrollArea,
   SegmentedControl, SimpleGrid, Stack, Text, Title, UnstyledButton,
 } from '@mantine/core'
 import { useMediaQuery } from '@mantine/hooks'
@@ -13,6 +13,7 @@ import type { TeamGame } from '../entities/team/api'
 import { fetchTeamDay, newGame, removeGame, saveAttendees, saveGame } from '../entities/team/api'
 import type { Slot, SlotMap } from '../entities/team/formations'
 import { FORMATIONS, FORMATION_OPTIONS, POSITION_HEX, SLOT_POSITION, assignSlot, remapSlots, slotColor } from '../entities/team/formations'
+import { byFewestGames, playCounts } from '../entities/team/playCount'
 import { exportCanvas, renderLineup } from '../entities/team/renderLineup'
 import type { Viewer } from '../features/auth/useAuth'
 import { TEAM_COLORS } from '../features/build-teams'
@@ -91,7 +92,11 @@ export function TeamManager({ members, bundle, viewer }: Props) {
   const assigned = new Set(Object.values(game.slots))
   const attendees = attendeeIds.map((id) => byId.get(id)).filter(Boolean) as Player[]
   const pool = attendees.length ? attendees : roster
-  const bench = attendees.filter((p) => !assigned.has(p.id))
+  const counts = playCounts(games, attendees.map((p) => p.id))
+  const playedTotal = games.filter((g) => Object.keys(g.slots).length > 0).length
+  // 교체 명단은 출전 적은 선수부터 (투입할 사람을 고르기 쉽게)
+  const bench = byFewestGames(attendees.filter((p) => !assigned.has(p.id)), counts)
+  const playLabel = (id: string) => (playedTotal > 1 ? `${counts.get(id)?.games.length ?? 0}/${playedTotal}` : null)
   const outsiders = members.filter((m) => m.status === 'ACTIVE' && !roster.some((r) => r.id === m.id))
 
   const updateGame = (g: TeamGame) => {
@@ -357,6 +362,9 @@ export function TeamManager({ members, bundle, viewer }: Props) {
                             onPointerDown={startDrag({ memberId: p.id, name: p.name })}
                             rightSection={!p.positionReview ? <PosBadge pos={p.mainPosition} size="xs" light /> : null}>
                             {p.name}
+                            {playLabel(p.id) && (
+                              <Text span size="xs" fw={700} ml={4} c={(counts.get(p.id)?.games.length ?? 0) === 0 ? 'red' : 'dimmed'}>{playLabel(p.id)}</Text>
+                            )}
                           </Badge>
                         ))}
                         {bench.length === 0 && <Text size="sm" c="dimmed">모두 선발입니다.</Text>}
@@ -370,6 +378,10 @@ export function TeamManager({ members, bundle, viewer }: Props) {
               </Stack>
             </SimpleGrid>
           </Card>
+
+          {attendees.length > 0 && playedTotal > 0 && (
+            <PlayTimeCard players={byFewestGames(attendees, counts)} counts={counts} total={playedTotal} color={tc.mantine} />
+          )}
 
           {isMobile && (
             <Box className="sticky-actions">
@@ -400,7 +412,7 @@ export function TeamManager({ members, bundle, viewer }: Props) {
               </Button>
             )}
             {attendees.length === 0 && <Text size="xs" c="dimmed">참석자가 없어 팀원 전체를 보여줍니다.</Text>}
-            {[...pool].sort((a, b) => Number(assigned.has(a.id)) - Number(assigned.has(b.id))).map((p) => {
+            {byFewestGames(pool, counts).sort((a, b) => Number(assigned.has(a.id)) - Number(assigned.has(b.id))).map((p) => {
               const at = Object.keys(game.slots).find((k) => game.slots[k] === p.id)
               const atLabel = at ? slots.find((s) => s.key === at)?.label : undefined
               const current = at === pickSlot.key
@@ -418,6 +430,7 @@ export function TeamManager({ members, bundle, viewer }: Props) {
                     <Group gap={8} wrap="nowrap">
                       {role && <RoleBadge role={role} color={tc.mantine} />}
                       <Text fw={700} style={{ flex: 1 }}>{p.name} <span className="year">{shortYear(p.birthYear)}</span></Text>
+                      {playLabel(p.id) && <Text size="xs" fw={700} c={(counts.get(p.id)?.games.length ?? 0) === 0 ? 'red' : 'dimmed'}>{playLabel(p.id)}경기</Text>}
                       {!p.positionReview && <PosBadge pos={p.mainPosition} size="xs" />}
                       {atLabel && <Badge size="xs" variant="light" color={current ? tc.mantine : 'gray'}>{current ? '현재' : `${atLabel}와 교대`}</Badge>}
                     </Group>
@@ -454,5 +467,48 @@ function PitchLines() {
         <rect x="24.84" y="99" width="18.32" height="5.5" />
       </g>
     </svg>
+  )
+}
+
+/** 그날 선수별 출전 경기 수 — 못 뛴 선수·적게 뛴 선수를 한눈에 */
+export function PlayTimeCard({ players, counts, total, color }: {
+  players: Player[]; counts: ReturnType<typeof playCounts>; total: number; color: string
+}) {
+  const zero = players.filter((p) => (counts.get(p.id)?.games.length ?? 0) === 0)
+  const min = Math.min(...players.map((p) => counts.get(p.id)?.games.length ?? 0))
+  const max = Math.max(...players.map((p) => counts.get(p.id)?.games.length ?? 0))
+  return (
+    <Card padding="md">
+      <Group justify="space-between" mb={6} wrap="wrap" gap={6}>
+        <Text fw={800}>출전 현황 <Text span c="dimmed" fw={600}>라인업 {total}경기 기준</Text></Text>
+        <Group gap={6}>
+          {zero.length > 0
+            ? <Badge color="red" variant="light">미출전 {zero.length}명</Badge>
+            : <Badge color="teal" variant="light">전원 출전</Badge>}
+          {max - min >= 2 && <Badge color="orange" variant="light">출전 차이 {max - min}경기</Badge>}
+        </Group>
+      </Group>
+      {zero.length > 0 && (
+        <Text size="sm" c="red" fw={600} mb="xs">아직 못 뛴 선수: {zero.map((p) => p.name).join(', ')}</Text>
+      )}
+      <Stack gap={6}>
+        {players.map((p) => {
+          const c = counts.get(p.id) ?? { games: [], total }
+          const n = c.games.length
+          return (
+            <Group key={p.id} gap={8} wrap="nowrap">
+              <Text size="sm" fw={700} w={64} truncate>{p.name}</Text>
+              <Progress.Root size={14} radius="xl" style={{ flex: 1 }} aria-label={`${p.name} ${n}/${total}경기`}>
+                {Array.from({ length: total }, (_, i) => (
+                  <Progress.Section key={i} value={100 / total} color={i < n ? color : 'gray.2'} style={{ borderRight: i < total - 1 ? '2px solid white' : undefined }} />
+                ))}
+              </Progress.Root>
+              <Text size="sm" fw={800} w={36} ta="right" c={n === 0 ? 'red' : undefined} className="tnum">{n}/{total}</Text>
+              <Text size="xs" c="dimmed" w={70} truncate>{n === 0 ? '미출전' : `${c.games.join('·')}경기`}</Text>
+            </Group>
+          )
+        })}
+      </Stack>
+    </Card>
   )
 }
