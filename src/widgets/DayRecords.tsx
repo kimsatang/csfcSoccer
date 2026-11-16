@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Accordion, ActionIcon, Alert, Badge, Button, Card, Center, ColorSwatch, Group, Loader, Modal, SegmentedControl, Select, Stack, Table, Text, TextInput, Title,
 } from '@mantine/core'
-import { IconBallFootball, IconCopy, IconPlus, IconTrash, IconTrophy, IconX } from '@tabler/icons-react'
+import { IconArrowDown, IconArrowUp, IconArrowsLeftRight, IconBallFootball, IconCopy, IconPencil, IconPlus, IconTrash, IconTrophy, IconX } from '@tabler/icons-react'
 import type { Player } from '../entities/player'
 import type { DayGame, DayGoal, NewGoal, Roster, SeasonBundle, SeasonTeam } from '../entities/season'
 import {
   addDayGame, addGoal, deleteDayGame, deleteGoal, fetchSeasonRecords, gameScore, goalText, matchDates, nextMatchDate, rosters, scorerTable,
-  setDayMvp, shortDate, standings, toIsoDate,
+  setDayMvp, shortDate, standings, swapDayGames, toIsoDate, updateDayGameTeams,
 } from '../entities/season'
 import { TEAM_COLORS } from '../features/build-teams/buildTeams'
 import { confirmAction, copyText, notify } from '../shared/ui/feedback'
@@ -31,6 +31,10 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
   const [data, setData] = useState<{ games: DayGame[]; goals: DayGoal[]; mvps: Map<string, string> } | null | undefined>(undefined)
   const [adding, setAdding] = useState<{ game: DayGame; teamId: string } | null>(null)
   const [today] = useState(() => toIsoDate(new Date()))
+  /** 새 게임 대진 고르는 중 */
+  const [draft, setDraft] = useState<[string, string] | null>(null)
+  /** 대진 바꾸는 중인 게임 */
+  const [editing, setEditing] = useState<{ id: string; pair: [string, string] } | null>(null)
 
   const names = useMemo(() => new Map(members.map((m) => [m.id, m.name])), [members])
   const teams = useMemo(() => [...bundle.teams].sort((a, b) => a.slot - b.slot), [bundle.teams])
@@ -48,7 +52,7 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
     return <Alert color="gray" title="경기 기록 준비 중">운영진이 DB 설정을 마치면 쓸 수 있어요.</Alert>
   }
 
-  const games = data.games.filter((g) => g.playedOn === day)
+  const games = data.games.filter((g) => g.playedOn === day).sort((a, b) => a.gameNo - b.gameNo)
   const dayGoals = data.goals.filter((x) => games.some((g) => g.id === x.gameId))
   const mvp = data.mvps.get(day) ?? null
   const canEdit = (g: Pick<DayGame, 'homeTeamId' | 'awayTeamId'>) => isAdmin || myTeamIds.includes(g.homeTeamId) || myTeamIds.includes(g.awayTeamId)
@@ -61,16 +65,44 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
   const seasonScorers = scorerTable(data.goals, names)
   const dayScorers = scorerTable(dayGoals, names)
 
+  /** 다음 게임 대진 추천: 오늘 덜 붙은 대진 → 직전 게임에서 쉰 팀이 들어가는 대진 순. 팀장은 자기 팀 게임만 */
+  const suggest = (): [string, string] => {
+    const ids = teams.map((t) => t.id)
+    const key = (h: string, a: string) => [h, a].sort().join('|')
+    const met = new Map<string, number>()
+    for (const g of games) met.set(key(g.homeTeamId, g.awayTeamId), (met.get(key(g.homeTeamId, g.awayTeamId)) ?? 0) + 1)
+    const last = games.at(-1)
+    const rested = (h: string, a: string) => (last && ![last.homeTeamId, last.awayTeamId].includes(h) || last && ![last.homeTeamId, last.awayTeamId].includes(a) ? 0 : 1)
+    const pairs = ids.flatMap((h, i) => ids.slice(i + 1).map((a) => [h, a] as [string, string]))
+      .filter(([h, a]) => isAdmin || myTeamIds.includes(h) || myTeamIds.includes(a))
+    pairs.sort((x, y) => (met.get(key(...x)) ?? 0) - (met.get(key(...y)) ?? 0) || rested(...x) - rested(...y))
+    return pairs[0] ?? [ids[0], ids[1]]
+  }
+  const pairError = ([h, a]: [string, string]) =>
+    h === a ? '서로 다른 두 팀을 골라 주세요.' : !isAdmin && !myTeamIds.includes(h) && !myTeamIds.includes(a) ? '우리 팀이 나오는 게임만 기록할 수 있어요.' : null
   const newGame = async () => {
-    const no = (games.at(-1)?.gameNo ?? 0) + 1
-    const pairs: [number, number][] = teams.length >= 3 ? [[0, 1], [1, 2], [0, 2]] : [[0, 1]]
-    let [h, a] = pairs[games.length % pairs.length].map((i) => teams[i]?.id) as [string, string]
-    // 팀장은 자기 팀 게임만 만들 수 있으니 자기 팀을 넣음
-    if (!isAdmin && !myTeamIds.includes(h) && !myTeamIds.includes(a)) { h = myTeamIds[0]; a = teams.find((t) => t.id !== h)!.id }
+    if (!draft || pairError(draft)) return
+    const no = Math.max(0, ...games.map((g) => g.gameNo)) + 1
     try {
-      const g = await addDayGame(season.id, day, no, h, a)
-      setData((d) => d && { ...d, games: [...d.games, g] })
+      const g = await addDayGame(season.id, day, no, draft[0], draft[1])
+      setData((d) => d && { ...d, games: [...d.games, g] }); setDraft(null)
     } catch (e) { notify.error((e as Error).message, '게임을 추가하지 못했어요') }
+  }
+  const saveTeams = async () => {
+    if (!editing || pairError(editing.pair)) return
+    const [h, a] = editing.pair
+    try {
+      await updateDayGameTeams(editing.id, h, a)
+      setData((d) => d && { ...d, games: d.games.map((g) => (g.id === editing.id ? { ...g, homeTeamId: h, awayTeamId: a } : g)) }); setEditing(null)
+    } catch (e) { notify.error((e as Error).message, '대진을 바꾸지 못했어요') }
+  }
+  const move = async (g: DayGame, dir: -1 | 1) => {
+    const other = games[games.indexOf(g) + dir]
+    if (!other) return
+    try {
+      await swapDayGames(g, other)
+      setData((d) => d && { ...d, games: d.games.map((x) => (x.id === g.id ? { ...x, gameNo: other.gameNo } : x.id === other.id ? { ...x, gameNo: g.gameNo } : x)) })
+    } catch (e) { notify.error((e as Error).message, '순서를 바꾸지 못했어요'); void load() }
   }
   const removeGame = async (g: DayGame) => {
     if (!(await confirmAction({ title: `${g.gameNo}경기를 지울까요?`, message: '이 게임의 골 기록도 함께 지워져요.', confirmLabel: '지우기', danger: true }))) return
@@ -122,7 +154,7 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
         <SegmentedControl fullWidth size="xs" value={day} onChange={setDay} data={dates.map((d) => ({ value: d, label: shortDate(d) }))} />
 
         <Stack gap="sm" mt="sm">
-          {games.map((g) => {
+          {games.map((g, i) => {
             const [hs, as] = gameScore(data.goals, g)
             const gl = data.goals.filter((x) => x.gameId === g.id)
             const editable = canEdit(g)
@@ -130,10 +162,27 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
               <div key={g.id} className="game-card">
                 <Group justify="space-between" gap={4} mb={2}>
                   <Text size="xs" c="dimmed">{g.gameNo}경기</Text>
-                  {editable && g.id === games.at(-1)?.id && (
-                    <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => void removeGame(g)} aria-label={`${g.gameNo}경기 지우기`}><IconTrash size={14} /></ActionIcon>
+                  {editable && editing?.id !== g.id && (
+                    <Group gap={0}>
+                      {i > 0 && canEdit(games[i - 1]) && (
+                        <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => void move(g, -1)} aria-label={`${g.gameNo}경기 앞으로`}><IconArrowUp size={14} /></ActionIcon>
+                      )}
+                      {i < games.length - 1 && canEdit(games[i + 1]) && (
+                        <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => void move(g, 1)} aria-label={`${g.gameNo}경기 뒤로`}><IconArrowDown size={14} /></ActionIcon>
+                      )}
+                      {!gl.length && (
+                        <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => setEditing({ id: g.id, pair: [g.homeTeamId, g.awayTeamId] })} aria-label={`${g.gameNo}경기 대진 바꾸기`}><IconPencil size={14} /></ActionIcon>
+                      )}
+                      {i === games.length - 1 && (
+                        <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => void removeGame(g)} aria-label={`${g.gameNo}경기 지우기`}><IconTrash size={14} /></ActionIcon>
+                      )}
+                    </Group>
                   )}
                 </Group>
+                {editing?.id === g.id ? (
+                  <PairPicker teams={teams} value={editing.pair} onChange={(pair) => setEditing({ id: g.id, pair })} error={pairError(editing.pair)}
+                    submitLabel="대진 저장" onSubmit={saveTeams} onCancel={() => setEditing(null)} />
+                ) : (
                 <Group justify="space-between" wrap="nowrap" gap={6}>
                   <Group gap={6} wrap="nowrap" justify="flex-end" style={{ flex: 1, minWidth: 0 }}>
                     <Text fw={700} truncate>{tName(g.homeTeamId)}</Text>
@@ -145,6 +194,7 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
                     <Text fw={700} truncate>{tName(g.awayTeamId)}</Text>
                   </Group>
                 </Group>
+                )}
                 {gl.length > 0 && (
                   <div className="goal-cols">
                     {[g.homeTeamId, g.awayTeamId].map((tid, side) => (
@@ -174,7 +224,14 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
             )
           })}
           {!games.length && <Text size="sm" c="dimmed" ta="center" py="xs">{shortDate(day)} 기록이 아직 없어요.</Text>}
-          {canAdd && <Button variant="light" leftSection={<IconPlus size={16} />} onClick={newGame}>{games.length + 1}경기 추가</Button>}
+          {canAdd && (draft ? (
+            <div className="game-card">
+              <Text size="xs" c="dimmed" mb={4}>{Math.max(0, ...games.map((g) => g.gameNo)) + 1}경기 대진</Text>
+              <PairPicker teams={teams} value={draft} onChange={setDraft} error={pairError(draft)} submitLabel="추가" onSubmit={newGame} onCancel={() => setDraft(null)} />
+            </div>
+          ) : (
+            <Button variant="light" leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setDraft(suggest()) }}>{games.length + 1}경기 추가</Button>
+          ))}
         </Stack>
 
         {games.length > 0 && (
@@ -242,6 +299,33 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
           catch (e) { notify.error((e as Error).message, '골을 기록하지 못했어요') }
         }}
       />
+    </Stack>
+  )
+}
+
+/** 두 팀 고르기 (가운데 ⇄ 로 좌우 맞바꿈) */
+function PairPicker({ teams, value, onChange, error, submitLabel, onSubmit, onCancel }: {
+  teams: SeasonTeam[]; value: [string, string]; onChange: (v: [string, string]) => void; error: string | null
+  submitLabel: string; onSubmit: () => void; onCancel: () => void
+}) {
+  const data = teams.map((t) => ({ value: t.id, label: t.name }))
+  const [h, a] = value
+  return (
+    <Stack gap={6}>
+      <Group wrap="nowrap" gap={6}>
+        <Select size="sm" style={{ flex: 1 }} data={data} value={h} allowDeselect={false} aria-label="왼쪽 팀"
+          leftSection={<ColorSwatch size={10} color={TEAM_COLORS[teams.find((t) => t.id === h)?.slot ?? 0].hex} />}
+          onChange={(v) => v && onChange([v, v === a ? h : a])} comboboxProps={{ withinPortal: true }} />
+        <ActionIcon variant="subtle" color="gray" onClick={() => onChange([a, h])} aria-label="좌우 바꾸기"><IconArrowsLeftRight size={16} /></ActionIcon>
+        <Select size="sm" style={{ flex: 1 }} data={data} value={a} allowDeselect={false} aria-label="오른쪽 팀"
+          leftSection={<ColorSwatch size={10} color={TEAM_COLORS[teams.find((t) => t.id === a)?.slot ?? 0].hex} />}
+          onChange={(v) => v && onChange([v === h ? a : h, v])} comboboxProps={{ withinPortal: true }} />
+      </Group>
+      {error && <Text size="xs" c="red">{error}</Text>}
+      <Group gap={8} justify="flex-end">
+        <Button size="compact-sm" variant="subtle" color="gray" onClick={onCancel}>취소</Button>
+        <Button size="compact-sm" onClick={onSubmit} disabled={Boolean(error)}>{submitLabel}</Button>
+      </Group>
     </Stack>
   )
 }

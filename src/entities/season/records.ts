@@ -47,6 +47,21 @@ export async function addDayGame(seasonId: string, playedOn: string, gameNo: num
   return game(data as GameRow)
 }
 
+/** 게임의 두 팀 바꾸기 (골 기록이 없을 때만 화면에서 허용) */
+export async function updateDayGameTeams(id: string, home: string, away: string): Promise<void> {
+  const { error } = await supabase.from('day_games').update({ home_team_id: home, away_team_id: away }).eq('id', id)
+  if (error) throw error
+}
+
+/** 두 게임의 순서(번호) 맞바꾸기 — 같은 날 번호가 겹치면 안 되므로 임시 번호 20을 거침 */
+export async function swapDayGames(a: DayGame, b: DayGame): Promise<void> {
+  const steps: [string, number][] = [[a.id, 20], [b.id, a.gameNo], [a.id, b.gameNo]]
+  for (const [id, no] of steps) {
+    const { error } = await supabase.from('day_games').update({ game_no: no }).eq('id', id)
+    if (error) throw error
+  }
+}
+
 export async function deleteDayGame(id: string): Promise<void> {
   const { error } = await supabase.from('day_games').delete().eq('id', id)
   if (error) throw error
