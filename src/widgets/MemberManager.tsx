@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { Dispatch } from 'react'
 import {
-  ActionIcon, Alert, Badge, Button, Card, Chip, Drawer, Group, Menu, Modal, NativeSelect, Paper, SegmentedControl, Stack, Switch,
+  ActionIcon, Alert, Badge, Button, Card, Center, Chip, Drawer, Group, Menu, Modal, NativeSelect, Paper, SegmentedControl, SimpleGrid, Stack, Switch,
   Table, Text, TextInput, Textarea, Title,
 } from '@mantine/core'
 import { useMediaQuery } from '@mantine/hooks'
@@ -14,6 +14,10 @@ import {
 } from '../entities/player'
 import { deleteMember, insertMembers, updateMember, upsertMembersByName } from '../entities/player/api'
 import { MissingBadge } from '../shared/ui/badges'
+import type { Ratings } from '../entities/rating'
+import { RATING_KEYS, RATING_LABEL, gradeOf, gradeRangesText, ratingAverage, saveRatings, skillFromRatings } from '../entities/rating'
+import type { RatingState } from '../entities/rating/useRatings'
+import { GradeBadge, RatingRadar } from '../shared/ui/RatingRadar'
 import { confirmAction, copyText, notify } from '../shared/ui/feedback'
 
 interface Props {
@@ -22,13 +26,16 @@ interface Props {
   onReload: () => void
   /** 회원 삭제: 슈퍼관리자만 (운영진은 휴면) */
   canDelete: boolean
+  /** 선수 지표·등급 (SQL 적용 전이면 available=false) */
+  rating?: RatingState
 }
 
 const stripId = ({ id: _id, ...rest }: Player): Omit<Player, 'id'> => { void _id; return rest }
 const SKILL_OPTIONS = Array.from({ length: SKILL_MAX - SKILL_MIN + 1 }, (_, i) => String(SKILL_MAX - i))
 const isMissing = (m: Player) => Boolean(m.needsReview || m.positionReview || !m.attendanceLevel)
 
-export function MemberManager({ members, dispatch, onReload, canDelete }: Props) {
+export function MemberManager({ members, dispatch, onReload, canDelete, rating }: Props) {
+  const showGrade = Boolean(rating?.available && (rating.access.see || rating.access.gradeOnly))
   const isMobile = useMediaQuery('(max-width: 48em)', true)
   const [query, setQuery] = useState('')
   const [onlyMissing, setOnlyMissing] = useState(false)
@@ -103,7 +110,7 @@ export function MemberManager({ members, dispatch, onReload, canDelete }: Props)
       ) : isMobile ? (
         <Stack gap={8}>
           {filtered.map((m) => (
-            <MemberCard key={m.id} m={m} saving={savingIds.has(m.id)} onQuick={(p) => quickUpdate(m, p)} onEdit={() => setEditing(m)} />
+            <MemberCard key={m.id} m={m} grade={showGrade ? rating?.grades.get(m.id) : undefined} saving={savingIds.has(m.id)} onQuick={(p) => quickUpdate(m, p)} onEdit={() => setEditing(m)} />
           ))}
         </Stack>
       ) : (
@@ -113,7 +120,7 @@ export function MemberManager({ members, dispatch, onReload, canDelete }: Props)
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th w={56}>년생</Table.Th><Table.Th>이름</Table.Th><Table.Th w={110}>주포지션</Table.Th><Table.Th w={110}>부포지션</Table.Th>
-                  <Table.Th w={100}>실력</Table.Th><Table.Th w={100}>참석률</Table.Th><Table.Th w={70}>상태</Table.Th><Table.Th>메모</Table.Th><Table.Th w={48} />
+                  <Table.Th w={100}>실력</Table.Th>{showGrade && <Table.Th w={56}>등급</Table.Th>}<Table.Th w={100}>참석률</Table.Th><Table.Th w={70}>상태</Table.Th><Table.Th>메모</Table.Th><Table.Th w={48} />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -130,6 +137,7 @@ export function MemberManager({ members, dispatch, onReload, canDelete }: Props)
                     <Table.Td><QuickSelects m={m} which="main" onQuick={(p) => quickUpdate(m, p)} /></Table.Td>
                     <Table.Td><QuickSelects m={m} which="sub" onQuick={(p) => quickUpdate(m, p)} /></Table.Td>
                     <Table.Td><QuickSelects m={m} which="skill" onQuick={(p) => quickUpdate(m, p)} /></Table.Td>
+                    {showGrade && <Table.Td><GradeBadge grade={rating?.grades.get(m.id)} /></Table.Td>}
                     <Table.Td><QuickSelects m={m} which="att" onQuick={(p) => quickUpdate(m, p)} /></Table.Td>
                     <Table.Td>
                       <Switch size="xs" checked={m.status === 'ACTIVE'} onChange={(e) => quickUpdate(m, { status: e.currentTarget.checked ? 'ACTIVE' : 'INACTIVE' })} aria-label={`${m.name} 활동`} />
@@ -155,6 +163,7 @@ export function MemberManager({ members, dispatch, onReload, canDelete }: Props)
         canDelete={canDelete}
         onClose={() => setEditing(null)}
         dispatch={dispatch}
+        rating={rating}
       />
       <CsvImport opened={csvOpen} onClose={() => setCsvOpen(false)} members={members} dispatch={dispatch} />
     </Stack>
@@ -162,13 +171,14 @@ export function MemberManager({ members, dispatch, onReload, canDelete }: Props)
 }
 
 /** 모바일 회원 카드: 이름 탭 → 편집, 아래 3개 셀렉트로 빠른 입력 */
-function MemberCard({ m, saving, onQuick, onEdit }: { m: Player; saving: boolean; onQuick: (p: Partial<Player>) => void; onEdit: () => void }) {
+function MemberCard({ m, grade, saving, onQuick, onEdit }: { m: Player; grade?: string; saving: boolean; onQuick: (p: Partial<Player>) => void; onEdit: () => void }) {
   return (
     <Paper p="sm" withBorder className={`member-card ${m.status === 'INACTIVE' ? 'inactive' : ''}`}>
       <Group justify="space-between" wrap="nowrap" onClick={onEdit} style={{ cursor: 'pointer' }}>
         <Group gap={8} wrap="nowrap" miw={0}>
           <Text fw={800} truncate>{m.name}</Text>
           <span className="year">{shortYear(m.birthYear)}</span>
+          <GradeBadge grade={grade} size="xs" />
           {m.backNumber != null && <Text size="xs" c="dimmed">#{m.backNumber}</Text>}
           {m.status === 'INACTIVE' && <Badge size="xs" color="gray">휴면</Badge>}
           {m.memo && <Badge size="xs" variant="outline" color="gray">{m.memo}</Badge>}
@@ -230,8 +240,9 @@ function QuickSelects({ m, which, onQuick }: { m: Player; which: 'main' | 'sub' 
 }
 
 /** 회원 추가·수정 (모바일: 아래에서 올라오는 시트) */
-function MemberEditor({ opened, member, members, isMobile, canDelete, onClose, dispatch }: {
+function MemberEditor({ opened, member, members, isMobile, canDelete, onClose, dispatch, rating }: {
   opened: boolean; member: Player | null; members: Player[]; isMobile: boolean; canDelete: boolean; onClose: () => void; dispatch: Dispatch<Action>
+  rating?: RatingState
 }) {
   const key = member?.id ?? 'new'
   return (
@@ -239,12 +250,19 @@ function MemberEditor({ opened, member, members, isMobile, canDelete, onClose, d
       opened={opened} onClose={onClose} position={isMobile ? 'bottom' : 'right'} size={isMobile ? '92%' : 420}
       title={<Text fw={800} size="lg">{member ? `${member.name} 수정` : '회원 추가'}</Text>}
     >
-      {opened && <EditorForm key={key} member={member} members={members} canDelete={canDelete} onClose={onClose} dispatch={dispatch} />}
+      {opened && <EditorForm key={key} member={member} members={members} canDelete={canDelete} onClose={onClose} dispatch={dispatch} rating={rating} />}
     </Drawer>
   )
 }
 
-function EditorForm({ member, members, canDelete, onClose, dispatch }: { member: Player | null; members: Player[]; canDelete: boolean; onClose: () => void; dispatch: Dispatch<Action> }) {
+function EditorForm({ member, members, canDelete, onClose, dispatch, rating }: {
+  member: Player | null; members: Player[]; canDelete: boolean; onClose: () => void; dispatch: Dispatch<Action>; rating?: RatingState
+}) {
+  const initialRatings = member ? rating?.ratings.get(member.id) : undefined
+  const [ratings, setRatings] = useState<Ratings>(initialRatings ?? {})
+  const ratingsChanged = RATING_KEYS.some((k) => (ratings[k] ?? null) !== (initialRatings?.[k] ?? null))
+  const canSeeRatings = Boolean(rating?.available && rating.access.see)
+  const canEditRatings = Boolean(rating?.available && rating.access.edit)
   const [name, setName] = useState(member?.name ?? '')
   const [year, setYear] = useState(member?.birthYear ? shortYear(member.birthYear) : '')
   const [no, setNo] = useState(member?.backNumber != null ? String(member.backNumber) : '')
@@ -274,8 +292,10 @@ function EditorForm({ member, members, canDelete, onClose, dispatch }: { member:
       memo: memo.trim() || undefined,
     }
     try {
+      let id = member?.id
       if (member) dispatch({ type: 'member/update', player: await updateMember({ ...body, id: member.id }) })
-      else dispatch({ type: 'member/append', players: await insertMembers([body]) })
+      else { const added = await insertMembers([body]); dispatch({ type: 'member/append', players: added }); id = added[0]?.id }
+      if (canEditRatings && ratingsChanged && id) { await saveRatings(id, ratings); rating?.setOne(id, ratings) }
       notify.ok(`${body.name} ${member ? '수정' : '추가'}했습니다.`)
       onClose()
     } catch (e) { notify.error((e as Error).message) }
@@ -314,6 +334,10 @@ function EditorForm({ member, members, canDelete, onClose, dispatch }: { member:
         <NativeSelect label="실력 (1~10)" value={skill} onChange={(e) => setSkill(e.currentTarget.value)} data={[{ value: '', label: '미입력' }, ...SKILL_OPTIONS]} />
         <NativeSelect label="참석률" value={att} onChange={(e) => setAtt(e.currentTarget.value)} data={[{ value: '', label: '미입력' }, ...ATTENDANCE_LEVELS.map((l) => ({ value: l, label: ATTENDANCE_LABEL[l] }))]} />
       </Group>
+      {canSeeRatings && (
+        <RatingEditor ratings={ratings} onChange={setRatings} editable={canEditRatings} grades={rating?.settings?.grades}
+          onUseAverage={(v) => setSkill(String(v))} />
+      )}
       <Textarea label="메모" autosize minRows={1} value={memo} onChange={(e) => setMemo(e.currentTarget.value)} placeholder="예: 회장, 주말만 가능" />
       <Switch label="활동 회원 (끄면 휴면 — 참석·지명 목록에서 빠짐)" checked={active} onChange={(e) => setActive(e.currentTarget.checked)} />
       {member && !canDelete && <Text size="xs" c="dimmed">회원 삭제는 슈퍼관리자만 할 수 있어요. 활동하지 않는 회원은 휴면으로 바꿔 주세요.</Text>}
@@ -362,5 +386,46 @@ function CsvImport({ opened, onClose, members, dispatch }: { opened: boolean; on
         </Group>
       </Stack>
     </Modal>
+  )
+}
+
+const RATING_OPTIONS = [{ value: '', label: '-' }, ...Array.from({ length: 10 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))]
+
+/** 선수 지표 6개 입력 + 육각형 그래프 + 등급 */
+function RatingEditor({ ratings, onChange, editable, grades, onUseAverage }: {
+  ratings: Ratings; onChange: (r: Ratings) => void; editable: boolean; grades?: { grade: string; min: number }[]
+  onUseAverage: (skill: number) => void
+}) {
+  const avg = ratingAverage(ratings)
+  const grade = gradeOf(avg, grades)
+  const skill = skillFromRatings(ratings)
+  return (
+    <Paper withBorder p="sm" radius="md">
+      <Group justify="space-between" mb={4}>
+        <Text size="sm" fw={700}>선수 지표</Text>
+        <Group gap={6}>
+          <GradeBadge grade={grade} size="md" />
+          <Text size="xs" c="dimmed">평균 {avg?.toFixed(1) ?? '-'}</Text>
+        </Group>
+      </Group>
+      <Center><RatingRadar ratings={ratings} size={210} /></Center>
+      {editable ? (
+        <SimpleGrid cols={3} spacing={6} mt={4}>
+          {RATING_KEYS.map((k) => (
+            <NativeSelect
+              key={k} size="xs" label={RATING_LABEL[k]} data={RATING_OPTIONS}
+              value={ratings[k] != null ? String(ratings[k]) : ''}
+              onChange={(e) => onChange({ ...ratings, [k]: e.currentTarget.value ? Number(e.currentTarget.value) : null })}
+            />
+          ))}
+        </SimpleGrid>
+      ) : <Text size="xs" c="dimmed" ta="center">지표는 슈퍼 관리자만 바꿀 수 있어요.</Text>}
+      <Group justify="space-between" mt={6} gap={6}>
+        <Text size="xs" c="dimmed">등급: {gradeRangesText(grades)}</Text>
+        {skill !== null && editable && (
+          <Button size="compact-xs" variant="subtle" onClick={() => onUseAverage(skill)}>실력을 {skill}(지표 평균)로</Button>
+        )}
+      </Group>
+    </Paper>
   )
 }

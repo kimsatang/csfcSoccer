@@ -83,3 +83,18 @@ body { background: var(--app-bg); -webkit-tap-highlight-color: transparent; }
 .auth-bg { background: radial-gradient(1200px 600px at 10% -10%, #d7f0e2 0%, transparent 60%), radial-gradient(900px 500px at 110% 110%, #e2ecff 0%, transparent 60%), var(--app-bg); }
 .member-card { transition: background 0.1s; }
 .member-card.inactive { opacity: 0.55; }
+/* 선수 등급 배지 */
+.grade-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 6px; font-weight: 900; font-size: 12px; color: #fff; background: var(--mantine-color-dark-5); flex: none; }
+.grade-badge.grade-xs { min-width: 18px; height: 16px; font-size: 10px; padding: 0 4px; }
+.grade-badge.grade-md { min-width: 28px; height: 26px; font-size: 15px; }
+.grade-badge[data-c="grape"] { background: var(--mantine-color-grape-6); }
+.grade-badge[data-c="blue"] { background: var(--mantine-color-blue-6); }
+.grade-badge[data-c="teal"] { background: var(--mantine-color-teal-6); }
+.grade-badge[data-c="yellow"] { background: var(--mantine-color-yellow-6); color: #3b2f00; }
+.grade-badge[data-c="gray"] { background: var(--mantine-color-gray-5); }
+
+/* 경기 기록 */
+.game-card { border: 1px solid var(--mantine-color-gray-3); border-radius: 10px; padding: 10px 12px; background: white; }
+.game-card .score { font-variant-numeric: tabular-nums; min-width: 64px; text-align: center; }
+.goal-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; margin-top: 6px; }
+@media (max-width: 480px) { .goal-cols { gap: 4px 12px; } }

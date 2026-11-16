@@ -13,6 +13,7 @@ import type { RosterImageMeta, RosterImagePlayer, RosterImageTeam } from '../ent
 import { renderAllRosters, renderTeamRoster } from '../entities/team/renderRoster'
 import { TEAM_COLORS } from '../features/build-teams'
 import { AttBadge, PosBadge, RoleBadge } from '../shared/ui/badges'
+import { MemberGrade } from '../entities/rating/useRatings'
 import { copyText, notify } from '../shared/ui/feedback'
 import { draftText } from './DraftBoard'
 
@@ -177,6 +178,7 @@ function TeamRosterCard({ roster, rows, saving, onSave }: { roster: Roster; rows
             <Text fw={role ? 800 : 700} size="sm" style={{ flex: 1 }} truncate>{p.name} <span className="year">{shortYear(p.birthYear)}</span></Text>
             <AttBadge level={p.attendanceLevel} compact />
             {!p.positionReview && <PosBadge pos={p.mainPosition} size="xs" />}
+            <MemberGrade id={p.id} />
           </Group>
         ))}
       </Stack>

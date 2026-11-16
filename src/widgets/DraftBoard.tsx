@@ -18,6 +18,7 @@ import { TEAM_COLORS } from '../features/build-teams'
 import { supabase } from '../shared/api/supabase'
 import { shuffle } from '../shared/lib/rng'
 import { AttBadge, PosBadge, RoleBadge } from '../shared/ui/badges'
+import { MemberGrade } from '../entities/rating/useRatings'
 import { confirmAction, copyText, notify } from '../shared/ui/feedback'
 
 interface Props {
@@ -291,6 +292,7 @@ export function DraftBoard({ members, bundle, showSkill, onChanged, isAdmin, isS
                             <AttBadge level={p.attendanceLevel} compact />
                             {!p.positionReview && <PosBadge pos={p.mainPosition} size="xs" />}
                             {showSkill && !p.needsReview && <Text size="xs" c="dimmed" fw={700}>{skillText(p)}</Text>}
+                            <MemberGrade id={p.id} />
                             <Button size="compact-sm" color={clockColor.mantine} disabled={busy || !canPick} onClick={() => pick(p)}>지명</Button>
                           </Group>
                         </Paper>
@@ -382,6 +384,7 @@ function RosterRow({ p, role, pickNo, color, showSkill, children }: {
       <AttBadge level={p.attendanceLevel} compact />
       {!p.positionReview && <PosBadge pos={p.mainPosition} size="xs" />}
       {showSkill && !p.needsReview && <Text size="xs" c="dimmed" fw={700}>{p.skill}</Text>}
+      <MemberGrade id={p.id} />
       {children}
     </Group>
   )
