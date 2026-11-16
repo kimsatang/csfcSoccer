@@ -62,8 +62,8 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
   const canEdit = (g: Pick<DayGame, 'homeTeamId' | 'awayTeamId'>) => isAdmin || myTeamIds.includes(g.homeTeamId) || myTeamIds.includes(g.awayTeamId)
   const canAdd = isAdmin || myTeamIds.length > 0
 
-  // 시즌 누적: 지난 경기일 + 오늘은 골이 기록된 게임만 (방금 만든 빈 게임이 0:0 무승부로 잡히지 않게)
-  const playedGames = data.games.filter((g) => g.playedOn < today || (g.playedOn === today && data.goals.some((x) => x.gameId === g.id)))
+  // 오늘까지의 게임은 모두 반영 (골 없는 게임 = 0:0 무승부)
+  const playedGames = data.games.filter((g) => g.playedOn <= today)
   const playedGoals = data.goals.filter((x) => playedGames.some((g) => g.id === x.gameId))
   const table = standings(teams.map((t) => t.id), playedGames, playedGoals)
   const seasonScorers = scorerTable(data.goals, names)
@@ -301,7 +301,7 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
                   ))}
                 </Table.Tbody>
               </Table>
-              <Text size="xs" c="dimmed" mt={4}>승 3점 · 무 1점. 오늘 게임은 골이 기록되면 반영돼요.</Text>
+              <Text size="xs" c="dimmed" mt={4}>승 3점 · 무 1점. 골 없이 추가한 게임은 0:0 무승부로 들어가요.</Text>
             </Accordion.Panel>
           </Accordion.Item>
           <Accordion.Item value="scorers">
