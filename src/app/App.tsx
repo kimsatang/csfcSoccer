@@ -3,7 +3,7 @@ import {
   ActionIcon, Alert, AppShell, Avatar, Badge, Box, Center, Container, Group, Loader, Menu, SegmentedControl, Stack, Text, UnstyledButton,
 } from '@mantine/core'
 import { useMediaQuery } from '@mantine/hooks'
-import { IconCalendarEvent, IconListDetails, IconLogout, IconShirtSport, IconTournament, IconUsers } from '@tabler/icons-react'
+import { IconCalendarEvent, IconListDetails, IconLogout, IconScoreboard, IconShirtSport, IconTournament, IconUsers } from '@tabler/icons-react'
 import { fetchMembers, fetchMembersForLeader } from '../entities/player/api'
 import type { SeasonBundle } from '../entities/season'
 import { fetchCurrentSeason } from '../entities/season/api'
@@ -15,13 +15,15 @@ import { LEADER_ROLE_LABEL } from '../features/invite/api'
 import { isSupabaseConfigured } from '../shared/api/supabase'
 import { AdminPanel } from '../widgets/AdminPanel'
 import { FinalRoster } from '../widgets/FinalRoster'
+import { DayRecords } from '../widgets/DayRecords'
 import { DraftBoard } from '../widgets/DraftBoard'
 import { MatchDay } from '../widgets/MatchDay'
 import { MemberManager } from '../widgets/MemberManager'
 import { TeamManager } from '../widgets/TeamManager'
 import { useAppStore } from './store'
+import { GradesContext, useRatings } from '../entities/rating/useRatings'
 
-type Step = 'members' | 'draft' | 'roster' | 'team' | 'match'
+type Step = 'members' | 'draft' | 'roster' | 'team' | 'match' | 'record'
 
 const STEP_META: Record<Step, { label: string; icon: typeof IconUsers }> = {
   members: { label: '회원', icon: IconUsers },
@@ -29,6 +31,7 @@ const STEP_META: Record<Step, { label: string; icon: typeof IconUsers }> = {
   roster: { label: '명단', icon: IconListDetails },
   team: { label: '팀 관리', icon: IconShirtSport },
   match: { label: '경기 당일', icon: IconCalendarEvent },
+  record: { label: '기록', icon: IconScoreboard },
 }
 
 export default function App() {
@@ -51,12 +54,13 @@ export default function App() {
 function TeamMaker({ viewer }: { viewer: Viewer }) {
   const [state, dispatch] = useAppStore()
   const [bundle, setBundle] = useState<SeasonBundle | null>(null)
-  const steps: Step[] = viewer.isAdmin ? ['members', 'draft', 'roster', 'team', 'match'] : ['draft', 'roster', 'team']
+  const steps: Step[] = viewer.isAdmin ? ['members', 'draft', 'roster', 'team', 'match', 'record'] : ['draft', 'roster', 'team', 'record']
   const [step, setStep] = useState<Step>('draft')
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const isMobile = useMediaQuery('(max-width: 48em)', true)
   const myTeamIds = useMemo(() => viewer.leaderTeams.map((l) => l.teamId), [viewer])
+  const rating = useRatings(viewer)
 
   const reloadSeason = useCallback(async () => {
     setBundle(await fetchCurrentSeason())
@@ -92,6 +96,7 @@ function TeamMaker({ viewer }: { viewer: Viewer }) {
   const noSeason = <Alert color="gray" title="진행 중인 시즌이 없습니다">Supabase seasons 테이블에 시즌을 추가하세요.</Alert>
 
   return (
+    <GradesContext.Provider value={rating.grades}>
     <AppShell
       header={{ height: 56 }}
       footer={isMobile ? { height: 64 } : undefined}
@@ -141,8 +146,8 @@ function TeamMaker({ viewer }: { viewer: Viewer }) {
             {!loaded && <Center py="xl"><Loader /></Center>}
             {loaded && step === 'members' && viewer.isAdmin && (
               <>
-                {viewer.isSuper && <AdminPanel />}
-                <MemberManager members={state.members} dispatch={dispatch} onReload={reload} canDelete={viewer.isSuper} />
+                {viewer.isSuper && <AdminPanel rating={rating} />}
+                <MemberManager members={state.members} dispatch={dispatch} onReload={reload} canDelete={viewer.isSuper} rating={rating} />
               </>
             )}
             {loaded && step === 'draft' && (bundle
@@ -150,6 +155,7 @@ function TeamMaker({ viewer }: { viewer: Viewer }) {
               : noSeason)}
             {loaded && step === 'roster' && (bundle ? <FinalRoster members={state.members} bundle={bundle} /> : noSeason)}
             {loaded && step === 'team' && (bundle ? <TeamManager members={state.members} bundle={bundle} viewer={viewer} /> : noSeason)}
+            {loaded && step === 'record' && (bundle ? <DayRecords members={state.members} bundle={bundle} isAdmin={viewer.isAdmin} myTeamIds={myTeamIds} /> : noSeason)}
             {loaded && step === 'match' && viewer.isAdmin && (bundle
               ? <MatchDay members={state.members} bundle={bundle} days={state.days} showSkill={showSkill} dispatch={dispatch} />
               : noSeason)}
@@ -174,5 +180,6 @@ function TeamMaker({ viewer }: { viewer: Viewer }) {
         </Group>
       </AppShell.Footer>}
     </AppShell>
+    </GradesContext.Provider>
   )
 }
