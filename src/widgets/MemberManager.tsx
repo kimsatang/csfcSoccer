@@ -15,7 +15,7 @@ import {
 import { deleteMember, insertMembers, updateMember, upsertMembersByName } from '../entities/player/api'
 import { MissingBadge } from '../shared/ui/badges'
 import type { Ratings } from '../entities/rating'
-import { RATING_KEYS, RATING_LABEL, gradeOf, gradeRangesText, ratingAverage, saveRatings, skillFromRatings } from '../entities/rating'
+import { RATING_KEYS, RATING_LABEL, flatRatings, gradeOf, gradeRangesText, gradeValue, normalizeGrades, ratingAverage, saveRatings, skillFromRatings } from '../entities/rating'
 import type { RatingState } from '../entities/rating/useRatings'
 import { GradeBadge, RatingRadar } from '../shared/ui/RatingRadar'
 import { confirmAction, copyText, notify } from '../shared/ui/feedback'
@@ -36,6 +36,8 @@ const isMissing = (m: Player) => Boolean(m.needsReview || m.positionReview || !m
 
 export function MemberManager({ members, dispatch, onReload, canDelete, rating }: Props) {
   const showGrade = Boolean(rating?.available && (rating.access.see || rating.access.gradeOnly))
+  /** 지표를 쓸 수 있으면 실력 대신 등급으로 입력 (등급 → 6개 지표에 대표값, 실력 = 지표 평균) */
+  const gradeMode = Boolean(rating?.available && rating.access.see && rating.access.edit)
   const isMobile = useMediaQuery('(max-width: 48em)', true)
   const [query, setQuery] = useState('')
   const [onlyMissing, setOnlyMissing] = useState(false)
@@ -52,6 +54,17 @@ export function MemberManager({ members, dispatch, onReload, canDelete, rating }
       .then((saved) => dispatch({ type: 'member/update', player: saved }))
       .catch((e) => { dispatch({ type: 'member/update', player: m }); notify.error(`${m.name} 저장 실패: ${(e as Error).message}`) })
       .finally(() => setSavingIds((s) => { const n = new Set(s); n.delete(m.id); return n }))
+  }
+
+  const setGrade = async (m: Player, g: string) => {
+    const v = gradeValue(g, rating?.settings?.grades)
+    if (v === null || !rating) return
+    const r = flatRatings(v)
+    try {
+      await saveRatings(m.id, r)
+      rating.setOne(m.id, r)
+      if (m.skill !== v || m.needsReview) quickUpdate(m, { skill: v, needsReview: false })
+    } catch (e) { notify.error(`${m.name} 등급 저장 실패: ${(e as Error).message}`) }
   }
 
   const filtered = useMemo(
@@ -102,7 +115,7 @@ export function MemberManager({ members, dispatch, onReload, canDelete, rating }
           />
           <Chip checked={onlyMissing} onChange={setOnlyMissing} color="orange" variant="light">미입력만 ({missingCount})</Chip>
         </Group>
-        <Text size="xs" c="dimmed" mt={6}>포지션·실력·참석률은 목록에서 바로 고르면 자동 저장됩니다.</Text>
+        <Text size="xs" c="dimmed" mt={6}>포지션·{gradeMode ? '등급' : '실력'}·참석률은 목록에서 바로 고르면 자동 저장됩니다.{gradeMode && ' 등급을 고르면 상세 지표가 그 등급 대표값으로 채워져요.'}</Text>
       </Card>
 
       {members.length === 0 ? (
@@ -110,7 +123,8 @@ export function MemberManager({ members, dispatch, onReload, canDelete, rating }
       ) : isMobile ? (
         <Stack gap={8}>
           {filtered.map((m) => (
-            <MemberCard key={m.id} m={m} grade={showGrade ? rating?.grades.get(m.id) : undefined} saving={savingIds.has(m.id)} onQuick={(p) => quickUpdate(m, p)} onEdit={() => setEditing(m)} />
+            <MemberCard key={m.id} m={m} grade={showGrade && !gradeMode ? rating?.grades.get(m.id) : undefined} saving={savingIds.has(m.id)} onQuick={(p) => quickUpdate(m, p)} onEdit={() => setEditing(m)}
+              gradeSelect={gradeMode ? <GradeQuick m={m} grade={rating?.grades.get(m.id)} steps={rating?.settings?.grades} onGrade={(g) => void setGrade(m, g)} /> : undefined} />
           ))}
         </Stack>
       ) : (
@@ -120,7 +134,7 @@ export function MemberManager({ members, dispatch, onReload, canDelete, rating }
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th w={56}>년생</Table.Th><Table.Th>이름</Table.Th><Table.Th w={110}>주포지션</Table.Th><Table.Th w={110}>부포지션</Table.Th>
-                  <Table.Th w={100}>실력</Table.Th>{showGrade && <Table.Th w={56}>등급</Table.Th>}<Table.Th w={100}>참석률</Table.Th><Table.Th w={70}>상태</Table.Th><Table.Th>메모</Table.Th><Table.Th w={48} />
+                  <Table.Th w={100}>{gradeMode ? '등급' : '실력'}</Table.Th>{showGrade && !gradeMode && <Table.Th w={56}>등급</Table.Th>}<Table.Th w={100}>참석률</Table.Th><Table.Th w={70}>상태</Table.Th><Table.Th>메모</Table.Th><Table.Th w={48} />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -136,8 +150,8 @@ export function MemberManager({ members, dispatch, onReload, canDelete, rating }
                     </Table.Td>
                     <Table.Td><QuickSelects m={m} which="main" onQuick={(p) => quickUpdate(m, p)} /></Table.Td>
                     <Table.Td><QuickSelects m={m} which="sub" onQuick={(p) => quickUpdate(m, p)} /></Table.Td>
-                    <Table.Td><QuickSelects m={m} which="skill" onQuick={(p) => quickUpdate(m, p)} /></Table.Td>
-                    {showGrade && <Table.Td><GradeBadge grade={rating?.grades.get(m.id)} /></Table.Td>}
+                    <Table.Td>{gradeMode ? <GradeQuick m={m} grade={rating?.grades.get(m.id)} steps={rating?.settings?.grades} onGrade={(g) => void setGrade(m, g)} /> : <QuickSelects m={m} which="skill" onQuick={(p) => quickUpdate(m, p)} />}</Table.Td>
+                    {showGrade && !gradeMode && <Table.Td><GradeBadge grade={rating?.grades.get(m.id)} /></Table.Td>}
                     <Table.Td><QuickSelects m={m} which="att" onQuick={(p) => quickUpdate(m, p)} /></Table.Td>
                     <Table.Td>
                       <Switch size="xs" checked={m.status === 'ACTIVE'} onChange={(e) => quickUpdate(m, { status: e.currentTarget.checked ? 'ACTIVE' : 'INACTIVE' })} aria-label={`${m.name} 활동`} />
@@ -171,7 +185,7 @@ export function MemberManager({ members, dispatch, onReload, canDelete, rating }
 }
 
 /** 모바일 회원 카드: 이름 탭 → 편집, 아래 3개 셀렉트로 빠른 입력 */
-function MemberCard({ m, grade, saving, onQuick, onEdit }: { m: Player; grade?: string; saving: boolean; onQuick: (p: Partial<Player>) => void; onEdit: () => void }) {
+function MemberCard({ m, grade, gradeSelect, saving, onQuick, onEdit }: { m: Player; grade?: string; gradeSelect?: React.ReactNode; saving: boolean; onQuick: (p: Partial<Player>) => void; onEdit: () => void }) {
   return (
     <Paper p="sm" withBorder className={`member-card ${m.status === 'INACTIVE' ? 'inactive' : ''}`}>
       <Group justify="space-between" wrap="nowrap" onClick={onEdit} style={{ cursor: 'pointer' }}>
@@ -190,7 +204,7 @@ function MemberCard({ m, grade, saving, onQuick, onEdit }: { m: Player; grade?: 
       </Group>
       <Group gap={6} mt={8} grow wrap="nowrap">
         <QuickSelects m={m} which="main" onQuick={onQuick} />
-        <QuickSelects m={m} which="skill" onQuick={onQuick} />
+        {gradeSelect ?? <QuickSelects m={m} which="skill" onQuick={onQuick} />}
         <QuickSelects m={m} which="att" onQuick={onQuick} />
       </Group>
     </Paper>
@@ -239,6 +253,19 @@ function QuickSelects({ m, which, onQuick }: { m: Player; which: 'main' | 'sub' 
   )
 }
 
+/** 목록에서 등급 바로 고르기 (지표 6개가 그 등급 대표값으로 채워짐) */
+function GradeQuick({ m, grade, steps, onGrade }: { m: Player; grade?: string; steps?: { grade: string; min: number }[]; onGrade: (g: string) => void }) {
+  const missing = !grade
+  return (
+    <NativeSelect
+      size="xs" radius="md" aria-label={`${m.name} 등급`} value={grade ?? ''}
+      styles={missing ? { input: { background: 'var(--mantine-color-orange-0)', borderColor: 'var(--mantine-color-orange-3)', color: 'var(--mantine-color-orange-8)', fontWeight: 700 } } : { input: { fontWeight: 800 } }}
+      onChange={(e) => e.currentTarget.value && onGrade(e.currentTarget.value)}
+      data={[...(missing ? [{ value: '', label: '등급 -' }] : []), ...normalizeGrades(steps).map((s) => ({ value: s.grade, label: `${s.grade}등급` }))]}
+    />
+  )
+}
+
 /** 회원 추가·수정 (모바일: 아래에서 올라오는 시트) */
 function MemberEditor({ opened, member, members, isMobile, canDelete, onClose, dispatch, rating }: {
   opened: boolean; member: Player | null; members: Player[]; isMobile: boolean; canDelete: boolean; onClose: () => void; dispatch: Dispatch<Action>
@@ -273,6 +300,11 @@ function EditorForm({ member, members, canDelete, onClose, dispatch, rating }: {
   const [active, setActive] = useState(member ? member.status === 'ACTIVE' : true)
   const [memo, setMemo] = useState(member?.memo ?? '')
   const [busy, setBusy] = useState(false)
+  const gradeMode = canSeeRatings && canEditRatings
+  const steps = rating?.settings?.grades
+  const autoSkill = gradeMode ? skillFromRatings(ratings) : null
+  const curGrade = gradeMode ? gradeOf(ratingAverage(ratings) ?? (skill ? Number(skill) : null), steps) : null
+  const hasSkill = Boolean(autoSkill ?? skill)
   const dup = !member && members.some((m) => m.name === name.trim())
 
   const save = async () => {
@@ -285,8 +317,8 @@ function EditorForm({ member, members, canDelete, onClose, dispatch, rating }: {
       mainPosition: (main || member?.mainPosition || 'MF') as Position,
       positionReview: !main,
       subPosition: (sub || undefined) as Position | undefined,
-      skill: skill ? Number(skill) : member?.skill ?? 5,
-      needsReview: !skill,
+      skill: autoSkill ?? (skill ? Number(skill) : member?.skill ?? 5),
+      needsReview: !hasSkill,
       attendanceLevel: (att || undefined) as AttendanceLevel | undefined,
       status: active ? 'ACTIVE' : 'INACTIVE',
       memo: memo.trim() || undefined,
@@ -331,17 +363,22 @@ function EditorForm({ member, members, canDelete, onClose, dispatch, rating }: {
         <SegmentedControl fullWidth value={sub} onChange={setSub} data={[{ value: '', label: '없음' }, ...POSITIONS.map((p) => ({ value: p, label: POSITION_LABEL[p] }))]} />
       </div>
       <Group grow>
-        <NativeSelect label="실력 (1~10)" value={skill} onChange={(e) => setSkill(e.currentTarget.value)} data={[{ value: '', label: '미입력' }, ...SKILL_OPTIONS]} />
+        {gradeMode ? (
+          <NativeSelect label="등급" value={curGrade ?? ''} description={autoSkill !== null ? `실력 ${autoSkill} (지표 평균)` : undefined}
+            onChange={(e) => { const v = gradeValue(e.currentTarget.value, steps); if (v !== null) { setRatings(flatRatings(v)); setSkill(String(v)) } }}
+            data={[...(curGrade ? [] : [{ value: '', label: '미입력' }]), ...normalizeGrades(steps).map((x) => ({ value: x.grade, label: `${x.grade}등급` }))]} />
+        ) : (
+          <NativeSelect label="실력 (1~10)" value={skill} onChange={(e) => setSkill(e.currentTarget.value)} data={[{ value: '', label: '미입력' }, ...SKILL_OPTIONS]} />
+        )}
         <NativeSelect label="참석률" value={att} onChange={(e) => setAtt(e.currentTarget.value)} data={[{ value: '', label: '미입력' }, ...ATTENDANCE_LEVELS.map((l) => ({ value: l, label: ATTENDANCE_LABEL[l] }))]} />
       </Group>
       {canSeeRatings && (
-        <RatingEditor ratings={ratings} onChange={setRatings} editable={canEditRatings} grades={rating?.settings?.grades}
-          onUseAverage={(v) => setSkill(String(v))} />
+        <RatingEditor ratings={ratings} onChange={setRatings} editable={canEditRatings} grades={rating?.settings?.grades} />
       )}
       <Textarea label="메모" autosize minRows={1} value={memo} onChange={(e) => setMemo(e.currentTarget.value)} placeholder="예: 회장, 주말만 가능" />
       <Switch label="활동 회원 (끄면 휴면 — 참석·지명 목록에서 빠짐)" checked={active} onChange={(e) => setActive(e.currentTarget.checked)} />
       {member && !canDelete && <Text size="xs" c="dimmed">회원 삭제는 슈퍼관리자만 할 수 있어요. 활동하지 않는 회원은 휴면으로 바꿔 주세요.</Text>}
-      {(!main || !skill) && <Group gap={6}><MissingBadge label={!main && !skill ? '포지션·실력 미입력' : !main ? '포지션 미입력' : '실력 미입력'} /><Text size="xs" c="dimmed">비워 두면 통계에서 빠집니다</Text></Group>}
+      {(!main || !hasSkill) && <Group gap={6}><MissingBadge label={!main && !hasSkill ? `포지션·${gradeMode ? '등급' : '실력'} 미입력` : !main ? '포지션 미입력' : `${gradeMode ? '등급' : '실력'} 미입력`} /><Text size="xs" c="dimmed">비워 두면 통계에서 빠집니다</Text></Group>}
       <Group grow mt="sm">
         {member && canDelete && <Button variant="light" color="red" leftSection={<IconTrash size={16} />} onClick={remove}>삭제</Button>}
         <Button size="md" loading={busy} disabled={!name.trim()} onClick={save}>{member ? '저장' : '추가'}</Button>
@@ -392,17 +429,18 @@ function CsvImport({ opened, onClose, members, dispatch }: { opened: boolean; on
 const RATING_OPTIONS = [{ value: '', label: '-' }, ...Array.from({ length: 10 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }))]
 
 /** 선수 지표 6개 입력 + 육각형 그래프 + 등급 */
-function RatingEditor({ ratings, onChange, editable, grades, onUseAverage }: {
+function RatingEditor({ ratings, onChange, editable, grades }: {
   ratings: Ratings; onChange: (r: Ratings) => void; editable: boolean; grades?: { grade: string; min: number }[]
-  onUseAverage: (skill: number) => void
 }) {
   const avg = ratingAverage(ratings)
   const grade = gradeOf(avg, grades)
-  const skill = skillFromRatings(ratings)
   return (
     <Paper withBorder p="sm" radius="md">
       <Group justify="space-between" mb={4}>
-        <Text size="sm" fw={700}>선수 지표</Text>
+        <div>
+          <Text size="sm" fw={700}>상세 지표</Text>
+          {editable && <Text size="xs" c="dimmed">등급을 고르면 대표값으로 채워지고, 지표를 바꾸면 등급이 다시 계산돼요</Text>}
+        </div>
         <Group gap={6}>
           <GradeBadge grade={grade} size="md" />
           <Text size="xs" c="dimmed">평균 {avg?.toFixed(1) ?? '-'}</Text>
@@ -420,12 +458,7 @@ function RatingEditor({ ratings, onChange, editable, grades, onUseAverage }: {
           ))}
         </SimpleGrid>
       ) : <Text size="xs" c="dimmed" ta="center">지표는 슈퍼 관리자만 바꿀 수 있어요.</Text>}
-      <Group justify="space-between" mt={6} gap={6}>
-        <Text size="xs" c="dimmed">등급: {gradeRangesText(grades)}</Text>
-        {skill !== null && editable && (
-          <Button size="compact-xs" variant="subtle" onClick={() => onUseAverage(skill)}>실력을 {skill}(지표 평균)로</Button>
-        )}
-      </Group>
+      <Text size="xs" c="dimmed" mt={6}>등급 기준: {gradeRangesText(grades)}</Text>
     </Paper>
   )
 }

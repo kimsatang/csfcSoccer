@@ -56,6 +56,22 @@ export const skillFromRatings = (r: Ratings | null | undefined): number | null =
   return a === null ? null : Math.min(RATING_MAX, Math.max(RATING_MIN, Math.round(a)))
 }
 
+/** 등급을 고르면 넣을 대표 지표값: 그 등급 구간의 가운데 정수 (예: S 9 · A 8 · B 6 · C 5 · D 2) */
+export function gradeValue(grade: string, steps: GradeStep[] = DEFAULT_GRADES): number | null {
+  const n = normalizeGrades(steps)
+  const i = n.findIndex((s) => s.grade === grade)
+  if (i < 0) return null
+  const lo = Math.max(RATING_MIN, n[i].min)
+  const hi = i === 0 ? RATING_MAX : n[i - 1].min - 0.1
+  const mid = Math.min(RATING_MAX, Math.max(RATING_MIN, Math.round((lo + hi) / 2)))
+  if (gradeOf(mid, n) === grade) return mid
+  const up = Math.min(RATING_MAX, Math.ceil(lo))
+  return gradeOf(up, n) === grade ? up : mid
+}
+
+/** 6개 지표를 같은 값으로 */
+export const flatRatings = (v: number): Ratings => Object.fromEntries(RATING_KEYS.map((k) => [k, v])) as Ratings
+
 // ── 공개 범위 ──
 /** super: 슈퍼만 · admin: 운영진(기본) · leader_grade: 팀장은 등급만 · leader_all: 팀장도 지표까지 */
 export type RatingVisibility = 'super' | 'admin' | 'leader_grade' | 'leader_all'

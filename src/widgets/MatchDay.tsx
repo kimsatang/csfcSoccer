@@ -9,7 +9,8 @@ import { confirmAction, copyText, notify } from '../shared/ui/feedback'
 import { PosBadge, RoleBadge } from '../shared/ui/badges'
 import type { Action, DayDraft } from '../app/store'
 import type { Player } from '../entities/player'
-import { POSITIONS, POSITION_LABEL, shortYear, skillText } from '../entities/player'
+import { POSITIONS, POSITION_LABEL, shortYear } from '../entities/player'
+import { SkillOrGrade } from '../entities/rating/useRatings'
 import type { SeasonBundle } from '../entities/season'
 import { matchDates, nextMatchDate, rosters, shortDate } from '../entities/season'
 import { TEAM_COLORS } from '../features/build-teams'
@@ -176,7 +177,7 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
           <Button leftSection={<IconDeviceFloppy size={16} />} loading={busy} disabled={!attending.length || waiting.length > 0 || saved === date} onClick={save}>기록 저장</Button>
         </Group>
         <Group justify="space-between" mt="sm">
-          <Switch size="sm" label="실력 표시" checked={showSkill} onChange={(e) => dispatch({ type: 'ui/showSkill', value: e.currentTarget.checked })} />
+          <Switch size="sm" label="실력·등급 표시" checked={showSkill} onChange={(e) => dispatch({ type: 'ui/showSkill', value: e.currentTarget.checked })} />
         </Group>
       </Card>
 
@@ -269,7 +270,7 @@ export function MatchDay({ members, bundle, days, showSkill, dispatch }: Props) 
                         {a.homeSlot !== undefined && a.homeSlot !== slot && <Badge size="xs" color="orange" variant="light" ml={4}>임시</Badge>}
                       </Text>
                       {!a.player.positionReview && <PosBadge pos={a.player.mainPosition} size="xs" />}
-                      {showSkill && !a.player.needsReview && <Text size="xs" c="dimmed" fw={700}>{skillText(a.player)}</Text>}
+                      {showSkill && <SkillOrGrade p={a.player} showSkill />}
                       <MoveMenu current={slot} home={a.homeSlot} teamName={teamName} onChange={(s) => setOverride(a.player.id, s === a.homeSlot ? null : s)} />
                     </Group>
                   </Paper>

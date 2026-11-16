@@ -60,7 +60,7 @@ function TeamMaker({ viewer }: { viewer: Viewer }) {
   const [loaded, setLoaded] = useState(false)
   const isMobile = useMediaQuery('(max-width: 48em)', true)
   const myTeamIds = useMemo(() => viewer.leaderTeams.map((l) => l.teamId), [viewer])
-  const rating = useRatings(viewer)
+  const rating = useRatings(viewer, state.members)
 
   const reloadSeason = useCallback(async () => {
     setBundle(await fetchCurrentSeason())

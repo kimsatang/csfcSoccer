@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_GRADES, gradeOf, normalizeGrades, ratingAccess, ratingAverage } from './index'
+import { DEFAULT_GRADES, gradeOf, gradeValue, normalizeGrades, ratingAccess, ratingAverage } from './index'
 
 describe('선수 지표', () => {
   it('평균은 입력된 지표만, 없으면 null', () => {
@@ -24,5 +24,11 @@ describe('선수 지표', () => {
     expect(ratingAccess(ldr, 'admin')).toEqual({ see: false, edit: false, gradeOnly: false })
     expect(ratingAccess(ldr, 'leader_grade')).toEqual({ see: false, edit: false, gradeOnly: true })
     expect(ratingAccess(ldr, 'leader_all')).toEqual({ see: true, edit: false, gradeOnly: false })
+  })
+  it('등급 대표값: 구간 가운데 정수, 그 값의 등급이 다시 같은 등급', () => {
+    expect(['S', 'A', 'B', 'C', 'D'].map((g) => gradeValue(g))).toEqual([9, 8, 6, 5, 2])
+    const custom = [{ grade: '상', min: 8 }, { grade: '중', min: 5 }, { grade: '하', min: 0 }]
+    for (const g of ['상', '중', '하']) expect(gradeOf(gradeValue(g, custom), custom)).toBe(g)
+    expect(gradeValue('X')).toBeNull()
   })
 })

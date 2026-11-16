@@ -9,7 +9,7 @@ import {
 } from '@tabler/icons-react'
 import type { Player, Position } from '../entities/player'
 import {
-  AGE_GROUPS, ATTENDANCE_LABEL, ATTENDANCE_LEVELS, POSITIONS, POSITION_LABEL, UNKNOWN_AGE, ageGroupOf, shortYear, skillText,
+  AGE_GROUPS, ATTENDANCE_LABEL, ATTENDANCE_LEVELS, POSITIONS, POSITION_LABEL, UNKNOWN_AGE, ageGroupOf, shortYear,
 } from '../entities/player'
 import type { Roster, SeasonBundle } from '../entities/season'
 import { availablePlayers, matchDates, nextPickNo, orderedTeams, rosters, shortDate, teamForPick } from '../entities/season'
@@ -18,7 +18,7 @@ import { TEAM_COLORS } from '../features/build-teams'
 import { supabase } from '../shared/api/supabase'
 import { shuffle } from '../shared/lib/rng'
 import { AttBadge, PosBadge, RoleBadge } from '../shared/ui/badges'
-import { MemberGrade } from '../entities/rating/useRatings'
+import { SkillOrGrade } from '../entities/rating/useRatings'
 import { confirmAction, copyText, notify } from '../shared/ui/feedback'
 
 interface Props {
@@ -291,8 +291,7 @@ export function DraftBoard({ members, bundle, showSkill, onChanged, isAdmin, isS
                             <Text fw={700} size="sm" style={{ flex: 1 }} truncate>{p.name}</Text>
                             <AttBadge level={p.attendanceLevel} compact />
                             {!p.positionReview && <PosBadge pos={p.mainPosition} size="xs" />}
-                            {showSkill && !p.needsReview && <Text size="xs" c="dimmed" fw={700}>{skillText(p)}</Text>}
-                            <MemberGrade id={p.id} />
+                            <SkillOrGrade p={p} showSkill={showSkill} />
                             <Button size="compact-sm" color={clockColor.mantine} disabled={busy || !canPick} onClick={() => pick(p)}>지명</Button>
                           </Group>
                         </Paper>
@@ -383,8 +382,7 @@ function RosterRow({ p, role, pickNo, color, showSkill, children }: {
       <Text fw={700} size="sm" style={{ flex: 1 }} truncate>{p.name} <span className="year">{shortYear(p.birthYear)}</span></Text>
       <AttBadge level={p.attendanceLevel} compact />
       {!p.positionReview && <PosBadge pos={p.mainPosition} size="xs" />}
-      {showSkill && !p.needsReview && <Text size="xs" c="dimmed" fw={700}>{p.skill}</Text>}
-      <MemberGrade id={p.id} />
+      <SkillOrGrade p={p} showSkill={showSkill} />
       {children}
     </Group>
   )
