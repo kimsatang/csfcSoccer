@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Accordion, ActionIcon, Alert, Badge, Button, Card, Center, ColorSwatch, Group, Loader, Modal, SegmentedControl, Select, Stack, Table, Text, TextInput, Title,
 } from '@mantine/core'
-import { IconArrowDown, IconArrowUp, IconArrowsLeftRight, IconBallFootball, IconCopy, IconPencil, IconPlus, IconTrash, IconTrophy, IconX } from '@tabler/icons-react'
+import { IconArrowDown, IconArrowUp, IconArrowsLeftRight, IconBallFootball, IconCopy, IconPencil, IconPhoto, IconPlus, IconTrash, IconTrophy, IconX } from '@tabler/icons-react'
 import type { Player } from '../entities/player'
 import type { DayGame, DayGoal, NewGoal, Roster, SeasonBundle, SeasonTeam } from '../entities/season'
 import {
@@ -10,6 +10,8 @@ import {
   setDayMvp, shortDate, standings, swapDayGames, toIsoDate, updateDayGameTeams,
 } from '../entities/season'
 import { TEAM_COLORS } from '../features/build-teams/buildTeams'
+import { renderDayResult } from '../entities/season/renderDayResult'
+import { exportCanvas } from '../entities/team/renderLineup'
 import { confirmAction, copyText, notify } from '../shared/ui/feedback'
 
 interface Props {
@@ -31,6 +33,8 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
   const [data, setData] = useState<{ games: DayGame[]; goals: DayGoal[]; mvps: Map<string, string> } | null | undefined>(undefined)
   const [adding, setAdding] = useState<{ game: DayGame; teamId: string } | null>(null)
   const [today] = useState(() => toIsoDate(new Date()))
+  const [preview, setPreview] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   /** 새 게임 대진 고르는 중 */
   const [draft, setDraft] = useState<[string, string] | null>(null)
   /** 대진 바꾸는 중인 게임 */
@@ -123,6 +127,30 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
 
   const tName = (id: string) => teamById.get(id)?.name ?? '?'
   const tColor = (id: string) => TEAM_COLORS[teamById.get(id)?.slot ?? 0]
+  const saveImage = async () => {
+    setSaving(true)
+    try {
+      await document.fonts?.ready
+      const team = (id: string) => ({ name: tName(id), color: tColor(id).hex })
+      const goalsOf = (gid: string, tid: string) => data.goals.filter((x) => x.gameId === gid && x.teamId === tid).map((x) => goalText(x, names))
+      const canvas = renderDayResult({
+        seasonName: season.name,
+        dateLabel: shortDate(day),
+        games: games.map((g) => {
+          const [hs, as] = gameScore(data.goals, g)
+          return { no: g.gameNo, home: team(g.homeTeamId), away: team(g.awayTeamId), homeScore: hs, awayScore: as, homeGoals: goalsOf(g.id, g.homeTeamId), awayGoals: goalsOf(g.id, g.awayTeamId) }
+        }),
+        mvp: mvp ? names.get(mvp) ?? null : null,
+        scorers: dayScorers.filter((r) => r.goals).map((r) => `${r.name} ${r.goals}`).join(' · ') || null,
+        assists: [...dayScorers].filter((r) => r.assists).sort((a, b) => b.assists - a.assists).map((r) => `${r.name} ${r.assists}`).join(' · ') || null,
+        standings: playedGames.length ? table.map((r) => ({ ...team(r.teamId), played: r.played, win: r.win, draw: r.draw, loss: r.loss, gd: r.gf - r.ga, points: r.points })) : [],
+      })
+      setPreview(canvas.toDataURL('image/png'))
+      await exportCanvas(canvas, `CSFC_경기결과_${day}.png`)
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') notify.error((e as Error).message, '이미지를 만들지 못했어요')
+    } finally { setSaving(false) }
+  }
   const resultText = () => {
     const lines = [`📋 ${season.name} ${shortDate(day)} 경기 결과`, '']
     for (const g of games) {
@@ -147,9 +175,14 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
       <Card padding="md">
         <Group justify="space-between" mb="sm" gap={8}>
           <Title order={4}>경기 기록</Title>
-          <Button size="xs" variant="default" leftSection={<IconCopy size={14} />} onClick={() => copyText(resultText(), '카톡에 붙여 넣을 결과를 복사했어요')} disabled={!games.length}>
-            결과 복사
-          </Button>
+          <Group gap={6}>
+            <Button size="xs" variant="default" leftSection={<IconPhoto size={14} />} onClick={() => void saveImage()} loading={saving} disabled={!games.length}>
+              이미지
+            </Button>
+            <Button size="xs" variant="default" leftSection={<IconCopy size={14} />} onClick={() => copyText(resultText(), '카톡에 붙여 넣을 결과를 복사했어요')} disabled={!games.length}>
+              결과 복사
+            </Button>
+          </Group>
         </Group>
         <SegmentedControl fullWidth size="xs" value={day} onChange={setDay} data={dates.map((d) => ({ value: d, label: shortDate(d) }))} />
 
@@ -291,6 +324,15 @@ export function DayRecords({ members, bundle, isAdmin, myTeamIds }: Props) {
           </Accordion.Item>
         </Accordion>
       </Card>
+
+      <Modal opened={!!preview} onClose={() => setPreview(null)} title={<Text fw={800}>{shortDate(day)} 경기 결과</Text>} size="lg">
+        {preview && (
+          <Stack gap="xs">
+            <img src={preview} alt={`${shortDate(day)} 경기 결과`} className="preview-img" />
+            <Text size="xs" c="dimmed" ta="center">저장이 안 되면 이미지를 길게 눌러 저장하세요.</Text>
+          </Stack>
+        )}
+      </Modal>
 
       <GoalModal
         target={adding} teams={teamById} rosters={rosterById} names={names} onClose={() => setAdding(null)}
